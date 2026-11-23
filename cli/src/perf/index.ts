@@ -5,7 +5,7 @@ import { caseRunnerProvider, createCaseRunner } from "../case/runners";
 import { bindService, type PluginDefinition, type ServiceCaseObservation, type ServiceCaseRunner } from "@compforge/doctor-plugin";
 import { graphFromServices, type Operation } from "@compforge/harness-common";
 import { Engine, writeRunData, type CaseMixEntry, type CaseSet, type Outcome, type Run, type Experiment } from "@compforge/perf-harness";
-import { probePerfScrape, scrapeAdvice, scrapeGroupSummary } from "./scrape";
+import { probePerfScrape, scrapeAdvice, scrapeGroupSummary, ScrapeFiles } from "./scrape";
 import { observePerf, preparePerfMetrics } from "./observations";
 import { PerfProgress, formatPerfSummary } from "./progress";
 import { discoverTenantDirectory } from "../plugin/tenant-directory";
@@ -133,7 +133,8 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
   const target = await selectPerfTarget(plugin, opts, config.qps > 0);
   if (!target) return {status:CommandStatus.Cancelled, artifacts:[]};
   const namespace = resolveCollectNamespace(opts, context.profile).namespace;
-  const scrape = await probePerfScrape(context, target.service, namespace, opts.prometheus);
+  const scrapeFiles = new ScrapeFiles();
+  const scrape = await probePerfScrape(context, target.service, namespace, opts.prometheus, scrapeFiles);
   if (scrape) {
     for (const group of scrape.groups) useLogger("perf").info(scrapeGroupSummary(group));
     if (scrape.recommendedHoldSeconds) {
@@ -214,6 +215,7 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
   context.artifacts.add({command:"perf", path:outputDir});
   const metadata = {scrape, service:target.service.name, caseRefs:mix.caseRefs, caseEntries, caseSource:mix.sources.length === 1 ? {service:target.service.name, source:mix.sources[0]!.sourceId!} : undefined, operation:operation.id(),
     caseFacets:mix.caseSet?.facets ?? {}, caseIds:mix.caseMix.map(item => item.id)};
+  scrapeFiles.write(outputDir);
   writePerfMetadata(outputDir, metadata);
   const graph = graphFromServices(plugin.services.services.map(item => bindService(item, service.environment)), {
     source:`declared:plugin/${plugin.id}`, version:plugin.version});

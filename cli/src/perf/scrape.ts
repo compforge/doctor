@@ -1,6 +1,9 @@
 import type { ScrapeTarget, Service } from "@compforge/harness-common";
 import { parseDuration } from "@compforge/harness-toolbox/duration";
 import { ToolboxError } from "@compforge/harness-toolbox/errors";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import type { HttpResponse } from "@compforge/harness-toolbox/http";
 import type { CommandContext } from "../command";
 import { openScrapeReader } from "../datasource/metricdb";
 
@@ -24,6 +27,34 @@ export interface PerfScrape {
   targetsError?: string;
   groups: ScrapeGroup[];
   recommendedHoldSeconds?: number;
+}
+
+/** Archive the collector's response, independent of Service matching and report rendering. */
+export class ScrapeFiles {
+  private config?: string;
+  private targets?: Uint8Array;
+
+  capture(url: string, response: HttpResponse): void {
+    if (response.status !== 200) return;
+    const path = new URL(url).pathname;
+    if (path.endsWith("/targets")) {
+      this.targets = response.body;
+    } else if (path.endsWith("/status/config")) {
+      // The API encloses the original YAML string in JSON. Preserve comments and formatting.
+      try {
+        const envelope = JSON.parse(new TextDecoder().decode(response.body));
+        if (envelope?.status === "success" && typeof envelope.data?.yaml === "string") this.config = envelope.data.yaml;
+      } catch { /* The reader records invalid_response in the scrape summary. */ }
+    }
+  }
+
+  write(directory: string): void {
+    if (this.config === undefined && this.targets === undefined) return;
+    const raw = join(directory, "raw", "scrape");
+    mkdirSync(raw, {recursive: true});
+    if (this.config !== undefined) writeFileSync(join(raw, "config.yaml"), this.config, {mode: 0o600});
+    if (this.targets !== undefined) writeFileSync(join(raw, "targets.json"), this.targets, {mode: 0o600});
+  }
 }
 
 function matchesTarget(service: ScrapeService, namespace: string, target: ScrapeTarget): boolean {
@@ -58,7 +89,7 @@ function failure(error: unknown, signal: AbortSignal): string {
 }
 
 /** @spec Only active targets matched to this Service contribute to its four-interval hold recommendation. */
-export async function probePerfScrape(context: CommandContext, service: ScrapeService, namespace: string, url?: string): Promise<PerfScrape | undefined> {
+export async function probePerfScrape(context: CommandContext, service: ScrapeService, namespace: string, url?: string, files?: ScrapeFiles): Promise<PerfScrape | undefined> {
   const profile = context.profile.value.metricdb;
   const override = url?.trim();
   const access = override && override !== profile?.url ? {url: override} : profile?.collector ?? profile;
@@ -66,7 +97,7 @@ export async function probePerfScrape(context: CommandContext, service: ScrapeSe
   const scrape: PerfScrape = { service: service.name, namespace, endpoint: access === profile?.collector ? "collector" : "metricdb", groups: [] };
   const signal = AbortSignal.any([context.signal, AbortSignal.timeout(5000)]);
   let reader;
-  try { reader = await openScrapeReader(context, access); }
+  try { reader = await openScrapeReader(context, access, files?.capture.bind(files)); }
   catch (error) {
     context.signal.throwIfAborted();
     scrape.configError = scrape.targetsError = failure(error, signal);

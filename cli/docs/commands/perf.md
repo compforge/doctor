@@ -113,6 +113,8 @@ Prometheus/VM。按 `type: metricdb` 与 `kind` 选择目标的 `observes` 声�
 
 Doctor 按 namespace 及 Service 或声明的 Workload 匹配 target，优先使用 active target 报告的间隔，缺少时按 scrapePool 查对应 job 的配置。显式 `--hold` 始终优先。探测失败时继续运行，查不到间隔时沿用 60 秒默认值。匹配结果、间隔来源、健康状态和 API 错误写入 `perf.json` 的 `scrape`，离线 HTML 可查看。
 
+Evidence Bundle 的 `raw/scrape/config.yaml` 保存采集器返回的原始 YAML，`raw/scrape/targets.json` 保存 targets API 的完整 HTTP 200 响应体，含所选 Service 以外的 target、发现标签和 `scrapeUrl`。两个接口独立留存。发送压测包前请检查配置中的凭据、内部地址及标签。
+
 声明观测指标只表示知道如何查询，不证明指标已写入 Prometheus。每个 RED 指标分别保留有结果、
 查询成功但无可用样本、查询失败或未采集的状态；兄弟指标成功时仍展示。无样本不补零，也不直接
 归因为 scrape 故障。Perf 只读已有历史数据，不抓取服务 /metrics、不读取日志、不管理 scrape。

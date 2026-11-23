@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../src/app/config/config";
 import { CommandContext } from "../src/command";
 import { perfMetricSource } from "../src/perf/observations";
-import { probePerfScrape, scrapeAdvice } from "../src/perf/scrape";
+import { probePerfScrape, scrapeAdvice, ScrapeFiles } from "../src/perf/scrape";
 
 /** @case Explicit profile kind drives the Perf backend without capability guesses. */
 for (const kind of ["prometheus", "victoriametrics"] as const) test(`profile metricdb ${kind} applies authentication and backend query semantics`, async () => {
@@ -69,8 +69,13 @@ test("scrape inspection uses the collector's credentials and preserves target ev
       url:collector.url.toString(),username:"reader",password:"test",
     }}}});
   const service = {name:"api",workloads:[{name:"main",platform:"kubernetes",location:{kind:"service",name:"api-svc"}}]} as const;
+  const directory = mkdtempSync(join(tmpdir(), "doctor-partial-scrape-"));
   try {
-    const scrape = await probePerfScrape(context, service, "ns");
+    const files = new ScrapeFiles();
+    const scrape = await probePerfScrape(context, service, "ns", undefined, files);
+    files.write(directory);
+    expect(existsSync(join(directory,"raw/scrape/config.yaml"))).toBe(false);
+    expect(JSON.parse(readFileSync(join(directory,"raw/scrape/targets.json"),"utf8")).data.activeTargets[0].scrapeUrl).toBe("http://private");
     expect(scrape).toMatchObject({endpoint:"collector",configError:"HTTP 403 (permission_denied)",recommendedHoldSeconds:360,
       groups:[{state:"active",health:"down",intervalSeconds:90,intervalSource:"target"},{state:"dropped"}]});
     expect(scrapeAdvice(scrape!).join()).toContain("last error");
@@ -80,5 +85,5 @@ test("scrape inspection uses the collector's credentials and preserves target ev
     expect(failed?.recommendedHoldSeconds).toBeUndefined();
     expect(scrapeAdvice(failed!).join()).not.toContain("未匹配到");
     expect(auth).toEqual(Array(4).fill("Basic " + Buffer.from("reader:test").toString("base64")));
-  } finally {await context.disposeClients();collector.stop(true);}
+  } finally {await context.disposeClients();collector.stop(true);rmSync(directory,{recursive:true,force:true});}
 });

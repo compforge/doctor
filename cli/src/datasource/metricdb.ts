@@ -1,5 +1,5 @@
 import { clientKey } from "@compforge/harness-common";
-import { HttpClient } from "@compforge/harness-toolbox/http";
+import { HttpClient, type HttpResponse } from "@compforge/harness-toolbox/http";
 import { MetricDBClient, type ScrapeReader } from "@compforge/harness-toolbox/metricdb";
 import { DirectTransport } from "@compforge/harness-toolbox/transport";
 import type { CommandContext } from "../command";
@@ -16,9 +16,15 @@ async function connectEndpoint(context: CommandContext, access: MetricEndpoint) 
   return { http, options: { url: access.url, headers } };
 }
 
-export async function openScrapeReader(context: CommandContext, access: MetricEndpoint): Promise<ScrapeReader> {
+export async function openScrapeReader(context: CommandContext, access: MetricEndpoint,
+  onResponse?: (url: string, response: HttpResponse) => void): Promise<ScrapeReader> {
   const { http, options } = await connectEndpoint(context, access);
-  return new MetricDBClient(http, options);
+  if (!onResponse) return new MetricDBClient(http, options);
+  return new MetricDBClient({request: async (url, request) => {
+    const response = await http.request(url, request);
+    onResponse(url, response);
+    return response;
+  }}, options);
 }
 
 /** An omitted kind probes the query dialect. Collector APIs are independent of that dialect. */
