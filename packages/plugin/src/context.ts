@@ -60,7 +60,14 @@ export interface PluginClients {
   get<C extends Client>(source: PluginDataSource<C>): Promise<C>;
 }
 
+/** Effective command values for this capability call. Dataset rows are request-scoped. */
+export interface CommandInvocation {
+  readonly tenantId?: string;
+  readonly userId?: string;
+}
+
 export interface PluginContext extends PluginClientContext {
+  readonly command?: CommandInvocation;
   /** Dependencies belong to this capability call and cannot enter shared client factories. */
   dependencies: Readonly<Record<string, ResolvedServiceDataSourceDependency>>;
   clients: PluginClients;

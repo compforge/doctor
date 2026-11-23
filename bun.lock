@@ -5,7 +5,7 @@
     "": {
       "name": "compforge-doctor",
       "devDependencies": {
-        "@compforge/spec-case": "0.0.7",
+        "@compforge/spec-case": "0.0.8",
       },
     },
     "cli": {
@@ -17,7 +17,7 @@
         "@compforge/harness-common": "0.10.0",
         "@compforge/harness-toolbox": "0.14.2",
         "@compforge/perf-harness": "0.15.2",
-        "@compforge/spec-case": "0.0.7",
+        "@compforge/spec-case": "0.0.8",
         "@compforge/trace-harness": "0.3.2",
         "@earendil-works/pi-agent-core": "0.87.1",
         "@kubernetes/client-node": "1.4.0",
@@ -30,6 +30,7 @@
         "abort-controller": "3.0.0",
         "chat-tui": "github:compforge/chat-tui#e6b435e5f25d3d5424414843d606ca75eb09413b",
         "consola": "^3.4.2",
+        "csv-parse": "^6.1.0",
         "fflate": "0.8.3",
         "fzstd": "0.1.1",
         "got": "15.1.0",
@@ -79,7 +80,7 @@
       "dependencies": {
         "@compforge/harness-common": "0.10.0",
         "@compforge/harness-toolbox": "0.14.2",
-        "@compforge/spec-case": "0.0.7",
+        "@compforge/spec-case": "0.0.8",
         "@compforge/trace-harness": "0.3.2",
       },
       "devDependencies": {
@@ -167,7 +168,7 @@
 
     "@compforge/perf-harness": ["@compforge/perf-harness@0.15.2", "", { "dependencies": { "@compforge/harness-common": "^0.10.0", "@compforge/harness-toolbox": "^0.14.0", "@compforge/spec-case": "^0.0.4" } }, "sha512-qNx6hzvPbP7Gm7O6UAXzJZkef95SzQ0+YL5WgNZDNOfUWFw1JAGopbDfL1QkdGOWKVNPAoouhDmdrp7ZK22/0A=="],
 
-    "@compforge/spec-case": ["@compforge/spec-case@0.0.7", "", { "dependencies": { "typescript": ">=6.0.3 <7", "yaml": "^2.8.1" }, "bin": { "specgen": "dist/src/cli.js" } }, "sha512-lF6mZ+v9o9FjfLtDuszkk0O8o3uyueNarYZAwy8Ixzuxc6uHAMI0aopmagY1foGrtV1TeRBt1C1lFM7qRVWSPQ=="],
+    "@compforge/spec-case": ["@compforge/spec-case@0.0.8", "", { "dependencies": { "typescript": ">=6.0.3 <7", "yaml": "^2.8.1" }, "bin": { "specgen": "dist/src/cli.js" } }, "sha512-vgk8Sp7I/bMnO6ufTlvjgogfmIWmn7PE9Bctr+vwL9sgya2ZGCnBiBT4Bev4WBZRFuEIPzaqM+K3U67COVPyfg=="],
 
     "@compforge/trace-harness": ["@compforge/trace-harness@0.3.2", "", { "dependencies": { "@compforge/harness-toolbox": "0.1.0", "fflate": "0.8.3" } }, "sha512-1VUjN2WnKYK/p2w+aWuQ+c9e2zneBmgo1M0kZ7iuZa6hY0tZWEigl5o1P5BZ1h6iUteGh10rwsBL2FLhvNurzQ=="],
 
@@ -438,6 +439,8 @@
     "cross-spawn": ["cross-spawn@7.0.6", "", { "dependencies": { "path-key": "^3.1.0", "shebang-command": "^2.0.0", "which": "^2.0.1" } }, "sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA=="],
 
     "csstype": ["csstype@3.2.3", "", {}, "sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ=="],
+
+    "csv-parse": ["csv-parse@6.2.1", "", {}, "sha512-LRLMV+UCyfMokp8Wb411duBf1gaBKJfOfBWU9eHMJ+b+cJYZsNu3AFmjJf3+yPGd59Exz1TsMjaSFyxnYB9+IQ=="],
 
     "data-uri-to-buffer": ["data-uri-to-buffer@4.0.1", "", {}, "sha512-0R9ikRb668HB7QDxT1vkpuUBtqc53YyAwMwGeUFKRojY/NWKvdZ+9UYtRfGmhqNbRkTSVpMbmyhXipFFv2cb/A=="],
 

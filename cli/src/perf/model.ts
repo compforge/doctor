@@ -7,6 +7,7 @@ export interface PerfCliOpts {
   operation?: string;
   caseset?: string;
   cases?: string;
+  caseDataset?: string;
   qps?: string;
   maxInflight?: string;
   ramp?: string;

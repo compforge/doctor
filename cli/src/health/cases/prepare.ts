@@ -1,7 +1,7 @@
 import {
   caseProducer, healthCheckScope, validateHealthCaseBindingsResult,
   type HealthCaseBinding, type HealthCaseExtension, type HealthCheckQuery, type HealthCaseBindingsResult,
-  type CaseProducer, type ServiceCaseSource, type CaseProduceQuery, type PluginDefinition, type ServiceDefinition, type ServiceRequestIdentity,
+  type CaseProducer, type ServiceCaseSource, type CaseProduceQuery, type PluginDefinition, type ServiceDefinition, type CommandInvocation,
 } from "@compforge/doctor-plugin";
 import { caseError } from "../../case/http-check";
 import type { CaseCheckResult } from "./run";
@@ -21,7 +21,7 @@ export interface PreparedCaseCheck {
 export interface CasePrepareActions {
   signal: AbortSignal;
   consume(service: ServiceDefinition, extension: HealthCaseExtension, query: HealthCheckQuery): Promise<HealthCaseBindingsResult>;
-  identity(producer: CaseProducer): Promise<ServiceRequestIdentity | undefined>;
+  identity(producer: CaseProducer): Promise<Required<CommandInvocation> | undefined>;
   tenant?(producer: CaseProducer): Promise<string | undefined>;
 }
 

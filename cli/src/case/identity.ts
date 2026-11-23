@@ -1,12 +1,13 @@
 import { createInterface } from "node:readline/promises";
 import type {
-  ServiceRequestIdentity,
+  CommandInvocation,
   TenantDirectory,
   TenantSummary,
   UserDirectorySearch,
   UserDirectorySearchResult,
   UserSummary,
 } from "@compforge/doctor-plugin";
+import { isInteractive } from "../terminal/policy";
 import { prepareTerminalInput } from "../terminal/input";
 import { writeOutput } from "../terminal/output";
 import { printNumberedChoices } from "../terminal/selection";
@@ -130,7 +131,7 @@ async function promptUserChoice(
 }
 
 export async function resolveCaseRequestIdentity(input: {
-  configured: Partial<ServiceRequestIdentity>;
+  configured: CommandInvocation;
   directory: TenantDirectory;
   commandLabel: string;
   logPrefix: string;
@@ -138,7 +139,7 @@ export async function resolveCaseRequestIdentity(input: {
   interactive?: boolean;
   promptTenant?: (tenants: readonly TenantSummary[]) => Promise<TenantSummary | undefined>;
   promptUser?: (input: { search: UserSearch }) => Promise<UserSummary | undefined>;
-}): Promise<ServiceRequestIdentity | undefined> {
+}): Promise<Required<CommandInvocation> | undefined> {
   let tenantId = normalized(input.configured.tenantId);
   let userId = normalized(input.configured.userId);
   if (!tenantId) {
@@ -152,6 +153,7 @@ export async function resolveCaseRequestIdentity(input: {
     tenantId = tenant.id;
   }
   if (!userId) {
+    if (!isInteractive(input.interactive) && !input.promptUser) throw new Error(`${input.commandLabel} Case 缺少真实用户，请提供 user_id`);
     if (!input.directory.searchActiveUsers) {
       throw new Error(`${input.commandLabel} Case 需要选择用户，但 tenantDirectory 未提供 searchActiveUsers`);
     }

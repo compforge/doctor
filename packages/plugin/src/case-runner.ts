@@ -6,7 +6,8 @@ import type { CaseSupport } from "./cases";
 export interface CaseRunnerFactory extends PluginOperation<ServiceCaseProbeOptions, ServiceCaseRunner> {
   readonly supports: CaseSupport;
   readonly endpoint: ServiceEndpoint;
-  readonly requestIdentity?: ServiceCaseIdentityRequirement;
+  /** Older inputs can still require an identity independently of declared Case params. */
+  readonly requestIdentity?: ServiceCaseIdentityRequirement & { requiredFor?: CaseSupport };
 }
 
 export function validateCaseRunnerFactory(value: unknown): asserts value is CaseRunnerFactory {

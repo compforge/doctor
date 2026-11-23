@@ -2,16 +2,14 @@ import { createCaseRunner, runnableCaseCatalog } from "../case/runners";
 import { doctorCaseCatalog } from "../case/catalog";
 import { selectDoctorCases } from "../terminal/case-selection";
 import { discoverTenantDirectory } from "../plugin/tenant-directory";
-import { isInteractive } from "../terminal/policy";
+import { prepareCaseInput, prepareRunnerCommand, runnerIdentity } from "../case";
 import type {
   PluginDefinition,
   ServiceCaseObservation,
   ServiceCaseRunner,
-  ServiceRequestIdentity,
 } from "@compforge/doctor-plugin";
 import type { Case, CaseSet } from "@compforge/spec-case/model";
 import { randomUUID } from "node:crypto";
-import { resolveCaseRequestIdentity } from "../case";
 import { dataServicesForBizQuery } from "../collect/data";
 import { dataCommand } from "../collect/data/command";
 import { logCommand } from "../collect/log/command";
@@ -29,7 +27,6 @@ import { useLogger } from "../terminal/log";
 import {
   resolveEvalConfig,
   selectEvalProvider,
-  type EvalProvider,
 } from "./config";
 import type {
   EvalCaseResult,
@@ -52,40 +49,6 @@ function correlation(observation: ServiceCaseObservation): EvalCaseResult["corre
     if (typeof value === "string" && value.trim()) return { key, id: value.trim() };
   }
   return undefined;
-}
-
-async function resolveEvalRequestIdentity(input: {
-  provider: EvalProvider;
-  plugin: PluginDefinition;
-  executor: ReturnType<typeof createKubernetesExecutor>;
-  namespace: string;
-  kubeconfig?: string;
-  context?: string;
-  profileName: string;
-  commandContext: CommandContext;
-}): Promise<ServiceRequestIdentity | undefined> {
-  const requirement = input.provider.factory.requestIdentity;
-  if (!requirement) return undefined;
-  const configured = requirement.configured(input.commandContext.profile.pluginConfig);
-  const tenantId = configured.tenantId?.trim();
-  const userId = configured.userId?.trim();
-  if (tenantId && userId) return { tenantId, userId };
-  if (!(isInteractive())) {
-    throw new Error("非交互环境的 Eval Case 必须由 Plugin profile 配置提供 tenant_id 和 user_id");
-  }
-  const directory = discoverTenantDirectory(input.plugin.services, (service, extension) => openPluginContext(input.executor, {
-    namespace: input.namespace,
-    kubeconfig: input.kubeconfig,
-    context: input.context,
-  }, {
-    config: input.commandContext.profile.pluginConfig,
-    service,
-    endpoint: extension.endpoint,
-    capability: extension,
-  }));
-  return resolveCaseRequestIdentity({
-    configured: { tenantId, userId }, directory, commandLabel: "Eval", logPrefix: "eval",
-  });
 }
 
 export async function executeEvalCases(
@@ -224,19 +187,17 @@ export async function runEval(
   const kube = await resolveKubernetesCommandConfig(opts, undefined, commandContext);
   if (!kube) return { status: CommandStatus.Cancelled, artifacts: [] };
   const executor = createKubernetesExecutor(kube);
-  const requestIdentity = await resolveEvalRequestIdentity({
-    provider,
-    plugin,
-    executor,
-    namespace: kube.kubernetes.namespace,
-    kubeconfig: kube.kubernetes.kubeconfig,
-    context: kube.kubernetes.context,
-    profileName: kube.profileName,
-    commandContext,
-  });
-  if (provider.factory.requestIdentity && !requestIdentity) {
-    useLogger("eval").warn("已取消身份选择");
-    return { status: CommandStatus.Cancelled, artifacts: [] };
+  const directory = discoverTenantDirectory(plugin.services, (service, extension) => openPluginContext(executor, kube.kubernetes, {
+    config: commandContext.profile.pluginConfig, service, endpoint: extension.endpoint, capability: extension,
+    signal: commandContext.signal, clients: commandContext.clients,
+  }), { commandContext });
+  const command = await prepareRunnerCommand(provider.factory, cases, [], commandContext, directory, "Eval");
+  if (!command) return { status: CommandStatus.Cancelled, artifacts: [] };
+  const inputs: Case[] = [];
+  for (const item of cases) {
+    const render = await prepareCaseInput(item, [], command);
+    if (!render) return { status: CommandStatus.Cancelled, artifacts: [] };
+    inputs.push(render());
   }
 
   const decision = await resolveApprovalGate(opts)({
@@ -261,7 +222,7 @@ export async function runEval(
     kubeconfig: kube.kubernetes.kubeconfig,
     context: kube.kubernetes.context,
   }, {
-    config: commandContext.profile.pluginConfig,
+    command, config: commandContext.profile.pluginConfig,
     service: provider.service,
     endpoint: provider.factory.endpoint,
     capability: provider.factory,
@@ -284,10 +245,10 @@ export async function runEval(
     runner = await createCaseRunner(provider.factory, managed, {
       caseSetId: caseSet.caseset,
       timeoutMs: config.requestTimeoutMs,
-      requestIdentity,
+      requestIdentity: runnerIdentity(command),
     });
     await runner.setup?.({ runId, signal: signal });
-    results = await executeEvalCases(runner, cases, runId, signal);
+    results = await executeEvalCases(runner, inputs, runId, signal);
   } catch (error) {
     lifecycleError = error instanceof Error ? error.message : String(error);
   } finally {

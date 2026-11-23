@@ -50,7 +50,7 @@ export const caseListCommand = defineCommand<CaseListInput, void>({
           useLogger("case").info(`解析 ${service.name}/${source.id} 的 Case URL`);
           return invoke(service, producer, {
             tenantId: input.tenantId, requestIdentity, requestTenantId, maxCases: 10,
-          });
+          }, requestIdentity ?? { tenantId: requestTenantId });
         },
       } satisfies Omit<CaseListActions, "signal">;
     })();
