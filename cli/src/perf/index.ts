@@ -5,6 +5,7 @@ import { caseRunnerProvider, createCaseRunner } from "../case/runners";
 import { bindService, type PluginDefinition, type ServiceCaseObservation, type ServiceCaseRunner } from "@compforge/doctor-plugin";
 import { graphFromServices, type Operation } from "@compforge/harness-common";
 import { Engine, writeRunData, type CaseMixEntry, type CaseSet, type Outcome, type Run, type Experiment } from "@compforge/perf-harness";
+import { probePerfScrape, scrapeAdvice, scrapeGroupSummary } from "./scrape";
 import { observePerf, preparePerfMetrics } from "./observations";
 import { PerfProgress, formatPerfSummary } from "./progress";
 import { discoverTenantDirectory } from "../plugin/tenant-directory";
@@ -110,14 +111,9 @@ async function selectParameters(opts: PerfCliOpts, config: PerfConfig): Promise<
   for (const [option, key, title, integer, positive] of [
     ["qps", "qps", "注入 QPS（0 只观测自然流量）", false, false],
     ["maxInflight", "maxInflight", "最大在途请求数", true, true],
-    ["hold", "holdSeconds", "hold 观测秒数", false, true],
   ] as const) {
     if (option === "maxInflight" && config.qps > 0) config.maxInflight = resolvePerfConfig({...opts, qps: String(config.qps)}).maxInflight;
     if (opts[option] !== undefined || (option === "maxInflight" && config.qps === 0)) continue;
-    if (option === "hold") {
-      useLogger("perf").warn("hold 建议覆盖 4～5 个 scrape（指标采样）周期：间隔 15s 时约 60～75s，间隔 60s 时约 240～300s。\n"
-        + "窗口内若只有 1 个采样点，无法计算增量、窗口 p95 或错误率属于预期情况；请按实际采样间隔选择时长。");
-    }
     const value = await promptListedChoice({question: `${title}（默认 ${config[key]}，q 取消）：`,
       emptyValue: config[key], invalidMessage: "请输入有效数值。",
       match: answer => {
@@ -136,6 +132,26 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
   if (!await selectParameters(opts, config)) return {status:CommandStatus.Cancelled, artifacts:[]};
   const target = await selectPerfTarget(plugin, opts, config.qps > 0);
   if (!target) return {status:CommandStatus.Cancelled, artifacts:[]};
+  const namespace = resolveCollectNamespace(opts, context.profile).namespace;
+  const scrape = await probePerfScrape(context, target.service, namespace, opts.prometheus);
+  if (scrape) {
+    for (const group of scrape.groups) useLogger("perf").info(scrapeGroupSummary(group));
+    if (scrape.recommendedHoldSeconds) {
+      useLogger("perf").info(`按匹配到的最长抓取间隔，建议 hold 至少 ${scrape.recommendedHoldSeconds}s（4 个周期）`);
+      if (opts.hold === undefined) config.holdSeconds = Math.max(config.holdSeconds, scrape.recommendedHoldSeconds);
+    }
+    for (const advice of scrapeAdvice(scrape)) useLogger("perf").warn(advice);
+  }
+  if (opts.hold === undefined && isInteractive()) {
+    const hold = await promptListedChoice({question: `hold 观测秒数（默认 ${config.holdSeconds}，q 取消）：`,
+      emptyValue: config.holdSeconds, invalidMessage: "请输入大于 0 的秒数。",
+      match: value => Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : undefined});
+    if (hold === undefined) return {status:CommandStatus.Cancelled, artifacts:[]};
+    config.holdSeconds = hold;
+  }
+  if (scrape?.recommendedHoldSeconds && config.holdSeconds < scrape.recommendedHoldSeconds) {
+    useLogger("perf").warn(`当前 hold ${config.holdSeconds}s 短于建议值 ${scrape.recommendedHoldSeconds}s，窗口内样本可能不足。`);
+  }
   const {operation} = target;
   const mix = perfCaseMix(target.selected);
   const caseEntries = Object.fromEntries(mix.routes.map(({id, choice}) => [id,
@@ -192,11 +208,11 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
     adapter = routePerfCases(mix, adapters, inputs);
   }
   const preparedMetrics = await preparePerfMetrics(declarations, context, opts.prometheus,
-    plugin.services.services, resolveCollectNamespace(opts, context.profile).namespace);
+    plugin.services.services, namespace);
   if (mix.caseSet) writeOutput(formatPerfCaseMix(mix.caseSet, mix.caseMix), process.stderr);
   const artifact = createPerfArtifact(config), outputDir = artifact.path;
   context.artifacts.add({command:"perf", path:outputDir});
-  const metadata = {service:target.service.name, caseRefs:mix.caseRefs, caseEntries, caseSource:mix.sources.length === 1 ? {service:target.service.name, source:mix.sources[0]!.sourceId!} : undefined, operation:operation.id(),
+  const metadata = {scrape, service:target.service.name, caseRefs:mix.caseRefs, caseEntries, caseSource:mix.sources.length === 1 ? {service:target.service.name, source:mix.sources[0]!.sourceId!} : undefined, operation:operation.id(),
     caseFacets:mix.caseSet?.facets ?? {}, caseIds:mix.caseMix.map(item => item.id)};
   writePerfMetadata(outputDir, metadata);
   const graph = graphFromServices(plugin.services.services.map(item => bindService(item, service.environment)), {
@@ -237,6 +253,6 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
     writeOutput(formatPerfSummary(run, metrics.metricIssues), process.stderr);
     return {status:context.signal.aborted ? CommandStatus.Cancelled : failure || run.status !== "completed" || !metrics.metricsComplete ? CommandStatus.Partial : CommandStatus.Ok,
       reason:failure ? diagnosticMessage(failure) : undefined,
-      output:{run, outputDir, ...metrics, caseFacets:mix.caseSet?.facets}, artifacts:context.artifacts.list()};
+      output:{run, outputDir, scrape, ...metrics, caseFacets:mix.caseSet?.facets}, artifacts:context.artifacts.list()};
   } finally { progress.dispose(); }
 }

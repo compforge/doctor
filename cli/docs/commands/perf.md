@@ -16,7 +16,7 @@ Case 来源绑定同一 Operation 时默认使用该入口，也可通过 `--ope
 | `--qps` | Harness `request_rate`，配置的加压速率，默认 0 |
 | `--max-inflight` | 正 QPS 下 Harness 未完成请求的上限，默认 20；QPS=0 不需要配置 |
 | `--case-dataset <csv>` | 正 QPS 下为选中的 Case 提供参数，每次请求有放回地随机抽一行 |
-| `--hold` | hold 观测秒数，默认 60，必须大于 0 |
+| `--hold` | hold 观测秒数，必须大于 0。默认取 60 秒与匹配 target 最长抓取间隔的 4 倍中的较大值 |
 
 CSV 首行是参数名，例如只提供 `query` 一列即可为声明该参数的 Case 更换问句。每行列数须一致，含逗号或换行的值用双引号包裹。
 多 Case 共享一份 CSV，每个 Case 使用自己声明的列。每项参数依次从当前行、声明的 `source`、`default` 取值。
@@ -95,6 +95,10 @@ Workload 名称限定在所属 Service 内；同一声明挂在不同目标上�
 metricdb:
   kind: victoriametrics # 或 prometheus；省略时识别后端
   url: https://metrics.example.net
+  # collector:                 # 采集与查询分离时填写
+  #   url: https://collector.example.net
+  #   username: ...            # 使用采集器自己的认证
+  #   password: ...
   # username: ...
   # password: ...
 ```
@@ -105,7 +109,11 @@ Prometheus/VM。按 `type: metricdb` 与 `kind` 选择目标的 `observes` 声�
 `Operation.observes` 提供完整查询选择条件，Core 不从 Kubernetes namespace 或用户参数拼接范围；
 `$window` 由 Harness 绑定实际窗口。查询并发、超时和响应大小由客户端统一限定。
 
-声明观测指标 只表示知道如何查询，不证明指标已写入 Prometheus。每个 RED 指标分别保留有结果、
+在线 perf 选定 Service 后并行读取采集器的 config 和 targets API，共用 5 秒探测时限。默认使用查询端点；当查询走 VM 的 vmselect 时，可用 `metricdb.collector.url` 指向实际采集器。用 `--prometheus` 切换至其他地址时，探测使用该地址。
+
+Doctor 按 namespace 及 Service 或声明的 Workload 匹配 target，优先使用 active target 报告的间隔，缺少时按 scrapePool 查对应 job 的配置。显式 `--hold` 始终优先。探测失败时继续运行，查不到间隔时沿用 60 秒默认值。匹配结果、间隔来源、健康状态和 API 错误写入 `perf.json` 的 `scrape`，离线 HTML 可查看。
+
+声明观测指标只表示知道如何查询，不证明指标已写入 Prometheus。每个 RED 指标分别保留有结果、
 查询成功但无可用样本、查询失败或未采集的状态；兄弟指标成功时仍展示。无样本不补零，也不直接
 归因为 scrape 故障。Perf 只读已有历史数据，不抓取服务 /metrics、不读取日志、不管理 scrape。
 

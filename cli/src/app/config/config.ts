@@ -93,17 +93,21 @@ function validateProfileShape(value: unknown, name: string): Profile {
   if (profile.prometheus !== undefined) throw new Error(`profile '${name}'.prometheus is no longer supported; use metricdb with optional kind`);
   const metricdb = optionalMap(profile.metricdb, `profile '${name}'.metricdb`);
   if (metricdb) {
-    if (typeof metricdb.url !== "string" || !metricdb.url) {
-      throw new Error(`profile '${name}'.metricdb.url must be a non-empty string`);
-    }
     if (metricdb.kind !== undefined && !["prometheus", "victoriametrics"].includes(metricdb.kind as string)) {
       throw new Error(`profile '${name}'.metricdb.kind must be prometheus or victoriametrics`);
     }
-    for (const key of Object.keys(metricdb)) {
-      if (!["url", "kind", "username", "password"].includes(key)) throw new Error(`profile '${name}'.metricdb.${key} is not supported; configure only kind, URL and credentials`);
+    const collector = optionalMap(metricdb.collector, `profile '${name}'.metricdb.collector`);
+    for (const [path, endpoint] of [["metricdb", metricdb], ["metricdb.collector", collector]] as const) {
+      if (!endpoint) continue;
+      if (typeof endpoint.url !== "string" || !endpoint.url.trim()) {
+        throw new Error(`profile '${name}'.${path}.url must be a non-empty string`);
+      }
+      const allowed = path === "metricdb" ? ["kind", "collector", "url", "username", "password"] : ["url", "username", "password"];
+      for (const key of Object.keys(endpoint)) {
+        if (!allowed.includes(key)) throw new Error(`profile '${name}'.${path}.${key} is not supported`);
+      }
+      for (const key of ["username", "password"]) optionalScalar(endpoint[key], "string", `profile '${name}'.${path}.${key}`);
     }
-    optionalScalar(metricdb.username, "string", `profile '${name}'.metricdb.username`);
-    optionalScalar(metricdb.password, "string", `profile '${name}'.metricdb.password`);
   }
   return profile as unknown as Profile;
 }
@@ -216,16 +220,14 @@ export function validateProfile(
     if (p.metricdb.kind !== undefined && !["prometheus", "victoriametrics"].includes(p.metricdb.kind)) {
       errors.push("metricdb.kind 只支持 prometheus 或 victoriametrics");
     }
-    try {
-      const url = new URL(p.metricdb.url);
-      if (url.protocol !== "http:" && url.protocol !== "https:") {
-        errors.push("metricdb.url 只支持 http:// 或 https://");
+    for (const [path, endpoint] of [["metricdb", p.metricdb], ["metricdb.collector", p.metricdb.collector]] as const) {
+      if (!endpoint) continue;
+      try {
+        if (!["http:", "https:"].includes(new URL(endpoint.url).protocol)) errors.push(`${path}.url 只支持 http:// 或 https://`);
+      } catch {
+        errors.push(`${path}.url 不是有效 URL`);
       }
-    } catch {
-      errors.push("metricdb.url 不是有效 URL");
-    }
-    if (!!p.metricdb.username !== !!p.metricdb.password) {
-      errors.push("metricdb.username / metricdb.password 必须成对配置");
+      if (!!endpoint.username !== !!endpoint.password) errors.push(`${path}.username / ${path}.password 必须成对配置`);
     }
   }
 

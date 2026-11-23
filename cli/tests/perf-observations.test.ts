@@ -193,6 +193,12 @@ test("QPS zero observes all registered observations without Kubernetes, identity
   let queries=0;
   const server=Bun.serve({port:0,fetch(request) {
     const url=new URL(request.url);const detection=backendDetection(url);if(detection)return detection;
+    if (url.pathname.endsWith("/status/config")) return Response.json({status:"success",data:{yaml:
+      "global: {scrape_interval: 1m}\nscrape_configs: [{job_name: chat-pool, scrape_interval: 15s}]"}});
+    if (url.pathname.endsWith("/targets")) return Response.json({status:"success",data:{activeTargets:[
+      {labels:{service:"chat", namespace:"production"}, scrapePool:"chat-pool", scrapeUrl:"http://private", health:"up"},
+      {labels:{service:"chat", namespace:"elsewhere"}, scrapeInterval:"5m", scrapeUrl:"http://unrelated"},
+    ],droppedTargets:[]}});
     if (url.pathname === "/api/v1/query_range") return Response.json({status:"success", data:{resultType:"matrix",
       result:[{metric:{}, values:[[Number(url.searchParams.get("start")), "7"]]}]}});
     expect(url.pathname).toBe("/api/v1/query");queries++;
@@ -210,6 +216,14 @@ test("QPS zero observes all registered observations without Kubernetes, identity
     const result=await perfCommand.run(context,{service:"chat",qps:"0",hold:"0.03"});
     expect({status:result.status, reason:"reason" in result ? result.reason : undefined}).toEqual({status:CommandStatus.Ok,reason:undefined});
     expect(queries).toBeGreaterThanOrEqual(4);
+    const snapshot = result.output!.scrape;
+    expect(snapshot).toMatchObject({recommendedHoldSeconds:60, groups:[{pool:"chat-pool", intervalSeconds:15, intervalSource:"config"}]});
+    const saved = readFileSync(join(result.output!.outputDir, "perf.json"), "utf8");
+    expect(JSON.parse(saved).scrape).toEqual(snapshot);
+    expect(saved).not.toContain("http://private");
+    const offline = await perfCommand.run(context, {from:result.output!.outputDir});
+    expect(offline.output!.scrape).toEqual(snapshot);
+    expect(readFileSync(writePerfReport(offline.output!), "utf8")).toContain("hold 0.03s 短于 4 个抓取周期");
     const run=result.output!.run;
     expect(run.entry_ids).toEqual([operation.id()]);
     expect(run.case_ids).toEqual([]);
@@ -243,7 +257,7 @@ test("QPS zero observes all registered observations without Kubernetes, identity
     expect(html).toContain('"name":"cpu_usage"');
     expect(html).toContain('"name":"mem_limit"');
     expect(html).toContain('id="callgraph-menu"');
-    expect(html).not.toContain("指标覆盖明细");
+    expect(html).toContain("抓取任务 chat-pool");
     expect(html).toContain('<td data-v="N/A">N/A</td>');
   } finally {await context.disposeClients();server.stop(true);cleanupTemporaryArtifacts(context.artifacts.list().map(a=>a.path));rmSync(directory,{recursive:true,force:true});}
 });

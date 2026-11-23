@@ -23,11 +23,15 @@ export interface RegistryProfileConfig {
 }
 
 /** Metric source access only; observation declarations own queries. An omitted kind enables capability detection. */
-export interface MetricDBProfileConfig {
+export interface MetricEndpoint {
   url: string;
-  kind?: MetricDBKind;
   username?: string;
   password?: string;
+}
+
+export interface MetricDBProfileConfig extends MetricEndpoint {
+  kind?: MetricDBKind;
+  collector?: MetricEndpoint;
 }
 
 export interface PluginProfileConfig {

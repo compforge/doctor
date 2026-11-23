@@ -8,10 +8,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@compforge/harness-common": "0.10.0",
+    "@compforge/harness-common": "0.10.2",
     "@compforge/spec-case": "0.0.8",
     "@compforge/trace-harness": "0.3.2",
-    "@compforge/harness-toolbox": "0.14.2"
+    "@compforge/harness-toolbox": "0.14.3"
   },
   "devDependencies": {
     "@types/bun": "latest",

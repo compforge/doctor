@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { loadConfig } from "../src/app/config/config";
 import { CommandContext } from "../src/command";
 import { perfMetricSource } from "../src/perf/observations";
+import { probePerfScrape, scrapeAdvice } from "../src/perf/scrape";
 
 /** @case Explicit profile kind drives the Perf backend without capability guesses. */
 for (const kind of ["prometheus", "victoriametrics"] as const) test(`profile metricdb ${kind} applies authentication and backend query semantics`, async () => {
@@ -48,4 +49,36 @@ test("profile accepts supported backend kinds and rejects legacy or invalid metr
     }
     expect(()=>read({prometheus:{url:"http://metrics"}})).toThrow("use metricdb");
   } finally {rmSync(directory, {recursive:true,force:true});}
+});
+
+test("scrape inspection uses the collector's credentials and preserves target evidence when config is forbidden", async () => {
+  const auth: (string | null)[] = [];
+  let targetsAvailable = true;
+  const collector = Bun.serve({port: 0, fetch(request) {
+    auth.push(request.headers.get("authorization"));
+    if (!new URL(request.url).pathname.endsWith("/targets")) return new Response(null, {status: 403});
+    if (!targetsAvailable) return new Response(null, {status: 404});
+    const discoveredLabels = {__meta_kubernetes_namespace:"ns", __meta_kubernetes_service_name:"api-svc"};
+    return Response.json({status:"success", data:{
+      activeTargets: [{discoveredLabels, scrapePool:"pool", health:"down", scrapeInterval:"1m30s", scrapeUrl:"http://private"}],
+      droppedTargets: [{discoveredLabels}],
+    }});
+  }});
+  const context = new CommandContext({}, {name:"fixture",configPath:"",pluginConfig:{},value:{readonly:true,
+    metricdb:{url:"http://unused.invalid",username:"query",password:"private",collector:{
+      url:collector.url.toString(),username:"reader",password:"test",
+    }}}});
+  const service = {name:"api",workloads:[{name:"main",platform:"kubernetes",location:{kind:"service",name:"api-svc"}}]} as const;
+  try {
+    const scrape = await probePerfScrape(context, service, "ns");
+    expect(scrape).toMatchObject({endpoint:"collector",configError:"HTTP 403 (permission_denied)",recommendedHoldSeconds:360,
+      groups:[{state:"active",health:"down",intervalSeconds:90,intervalSource:"target"},{state:"dropped"}]});
+    expect(scrapeAdvice(scrape!).join()).toContain("last error");
+    targetsAvailable = false;
+    const failed = await probePerfScrape(context, service, "ns");
+    expect(failed).toMatchObject({targetsError:"HTTP 404 (resource_not_found)",groups:[]});
+    expect(failed?.recommendedHoldSeconds).toBeUndefined();
+    expect(scrapeAdvice(failed!).join()).not.toContain("未匹配到");
+    expect(auth).toEqual(Array(4).fill("Basic " + Buffer.from("reader:test").toString("base64")));
+  } finally {await context.disposeClients();collector.stop(true);}
 });
