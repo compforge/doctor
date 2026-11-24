@@ -166,14 +166,14 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
   const loads = perfLoadPlans(config);
   const declarations = plugin.services.operations().map(item => item.operation);
   const preparedMetrics = await preparePerfMetrics(declarations, context, client,
-    plugin.services.services, namespace);
+    plugin.services.services, namespace, scrape?.services);
   const metricBaseline = await inspectMetricBaseline(preparedMetrics, config.holdSeconds, context.signal);
   for (const coverage of scrape?.services ?? []) {
     const interval = Math.max(0, ...coverage.groups.map(group => group.intervalSeconds ?? 0));
     if (interval * 4 > config.holdSeconds) useLogger("perf").warn(
       `${coverage.service}：最长抓取周期 ${interval}s，计划 hold ${config.holdSeconds}s；建议缩短该 job 的间隔或将实际 hold 延长至 ${4*interval}s。`);
   }
-  if (metricBaseline) for (const line of metricBaselineAdvice(metricBaseline)) useLogger("perf").warn(line);
+  if (metricBaseline) for (const {level, message} of metricBaselineAdvice(metricBaseline, entryIds)) useLogger("perf")[level](message);
   let service = bindService(target.service, {name:context.profile.name});
   const contexts: Awaited<ReturnType<typeof openPluginContext>>[] = [];
   let adapter: Pick<Experiment, "runner" | "judge"> = {};

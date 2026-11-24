@@ -36,8 +36,9 @@ for (const kind of ["prometheus", "victoriametrics"] as const) {
     ]}, 60, new AbortController().signal);
 
     expect(baseline!.samples['requests_total{path="/healthy",status_code=~"5.."}']).toEqual({series:0});
-    expect(metricBaselineAdvice(baseline!)).toEqual([
-      "api 指标基线（回看 60s）：2 个 Operation 无匹配的必需时序（idle、required）；1 个 Operation 样本不足（sparse）；1 个 Operation 未能核对（unavailable）。详见「指标质量」。",
+    expect(metricBaselineAdvice(baseline!, ["operation:api/required"])).toEqual([
+      {level:"warn", message:"api 指标基线（回看 60s）：1 个入口 Operation 无匹配的必需时序（required）；1 个 Operation 样本不足（sparse）；1 个 Operation 未能核对（unavailable）。详见「指标质量」。"},
+      {level:"info", message:"api 指标基线（回看 60s）：1 个非入口 Operation 在回看窗口内无匹配的必需时序（idle）。详见「指标质量」。"},
     ]);
   });
 }

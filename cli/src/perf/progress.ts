@@ -81,12 +81,7 @@ export function formatPerfSummary(run: Run, metricIssues: readonly string[] = []
     lines.push(`  结束原因=${reason}，实际 hold=${holdSummary}；注入发出=${request?.dispatched ?? 0}，完成=${request?.completed ?? 0}，成功=${request?.n_ok ?? 0}，中断=${arm.stop.interrupted}`);
     if (request?.n) lines.push(`  请求耗时 P50=${request.p50_ms?.toFixed(1) ?? "N/A"}ms，P95=${request.p95_ms?.toFixed(1) ?? "N/A"}ms`);
   }
-  if (metricIssues.length) {
-    lines.push(`  指标覆盖不完整：${metricIssues.length} 项缺口`);
-    lines.push(...metricIssues.slice(0, 5).map(issue => `    ${issue}`));
-    if (metricIssues.length > 5) lines.push(`    其余 ${metricIssues.length - 5} 项见 Evidence Bundle 中 perf.json 的 metricIssues。`);
-  }
-  else lines.push(run.executions.some(arm => arm.prometheus_observations?.length)
+  if (!metricIssues.length) lines.push(run.executions.some(arm => arm.prometheus_observations?.length)
     ? "  指标采集无已知缺口。" : "  本轮未产生指标查询。");
   return lines.join("\n") + "\n";
 }

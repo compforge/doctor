@@ -90,6 +90,9 @@ Workload 名称限定在所属 Service 内；同一声明挂在不同目标上�
 资源时间线按 Service 的 Kubernetes workload 汇总副本和容器，CPU 用 cores，内存用 MiB。usage、request、limit 分别成线。数据来自当前 profile 或 `--prometheus` 选定的 Prometheus/VM：cAdvisor 提供用量，kube-state-metrics 提供容器成员及配额。Service 定位使用 EndpointSlice 的 Pod 引用与 `kubernetes.io/service-name` 标签。该时刻查不到 EndpointSlice Pod 引用时，用同名 Endpoints 的地址关联同 namespace 内可唯一识别的 Pod IP。按标签定位的 Workload 依赖已导出的 Pod 标签。数据源需覆盖目标集群和命名空间。缺少成员映射、用量或配额时对应采样点留空。
 
 所有已注册 Operation 的 `observes` 都参与观测。指标覆盖缺口记录在 Evidence Bundle 的 `perf.json` 的 `metricIssues` 中。
+结束时按查询失败、未采集、趋势无可用点、窗口无可计算值和直方图无观测增量汇总，并标明其中属于入口
+Operation 的项数。同一指标在趋势和多个汇总窗口中可能各有一条记录。压测前的基线将非入口
+Operation 在回看窗口无匹配时序记为提示，入口缺必需时序、样本不足或查询未能核对仍告警。
 
 ## Profile 与证据
 
@@ -109,7 +112,9 @@ Profile 提供地址、必要认证和可选 `kind`。显式 kind 选择对应�
 Prometheus/VM。按 `type: metricdb` 与 `kind` 选择目标的 `observes` 声明；认证、连接和无法识别的响应
 保留错误，不切换后端。旧 `prometheus` profile 字段需改为 `metricdb`，原有 URL 与认证字段可原样迁移。
 `Operation.observes` 提供完整查询选择条件，Core 不从 Kubernetes namespace 或用户参数拼接范围；
-`$window` 由 Harness 绑定实际窗口。查询并发、超时和响应大小由客户端统一限定。
+`$window` 在汇总查询中绑定实际窗口。Operation 的趋势查询采用至少 60 秒的滚动窗口。有匹配的
+active target 时取 60 秒与最长有效抓取间隔的四倍中的较大值，显式 `trendWindowSeconds`
+优先。趋势点可能包含运行开始前的样本。查询并发、超时和响应大小由客户端统一限定。
 
 在线 perf 选定 Service 后并行读取采集器的 config 和 active targets（`state=active`）API，共用 5 秒探测时限。默认使用查询端点；当查询走 VM 的 vmselect 时，可用 `metricdb.collector.url` 指向实际采集器，并按需单独配置其 `username/password`。省略 collector 时，两个 API 共用查询端点及其认证。用 `--prometheus` 切换至其他地址时，探测使用该地址。
 

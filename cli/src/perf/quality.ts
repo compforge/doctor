@@ -58,10 +58,13 @@ export async function inspectMetricBaseline(prepared: PreparedPerfMetrics, windo
   return baseline;
 }
 
-export function metricBaselineAdvice(baseline: MetricQualityBaseline): string[] {
-  const byService = new Map<string, { empty: Set<string>; sparse: Set<string>; unknown: Set<string> }>();
+export function metricBaselineAdvice(baseline: MetricQualityBaseline, entryIds: readonly string[]): { level: "info" | "warn"; message: string }[] {
+  const entries = new Set(entryIds);
+  const byService = new Map<string, { entry: Set<string>; other: Set<string>; sparse: Set<string>; unknown: Set<string> }>();
   for (const input of baseline.inputs) {
-    const gaps = byService.get(input.service) ?? { empty:new Set<string>(), sparse:new Set<string>(), unknown:new Set<string>() };
+    const gaps = byService.get(input.service) ?? {
+      entry:new Set<string>(), other:new Set<string>(), sparse:new Set<string>(), unknown:new Set<string>(),
+    };
     byService.set(input.service, gaps);
     const operation = input.operation.slice(input.operation.lastIndexOf("/") + 1);
     for (const selector of input.selectors) {
@@ -70,23 +73,26 @@ export function metricBaselineAdvice(baseline: MetricQualityBaseline): string[] 
         gaps.unknown.add(operation);
       } else if (samples.series === 0) {
         if (selector === input.zeroFallbackNumerator) continue;
-        gaps.empty.add(operation);
+        (entries.has(input.operation) ? gaps.entry : gaps.other).add(operation);
       } else if (input.windowed && (samples.minSamples ?? 0) < 2) {
         gaps.sparse.add(operation);
       }
     }
   }
 
-  const advice: string[] = [];
-  for (const [service, {empty, sparse, unknown}] of byService) {
-    const details = [
-      [empty, "无匹配的必需时序"],
-      [sparse, "样本不足"],
-      [unknown, "未能核对"],
+  const advice: ReturnType<typeof metricBaselineAdvice> = [];
+  for (const [service, {entry, other, sparse, unknown}] of byService) {
+    const prefix = `${service} 指标基线（回看 ${baseline.windowSeconds}s）：`;
+    const warnings = [
+      [entry, "入口 Operation 无匹配的必需时序"],
+      [sparse, " Operation 样本不足"],
+      [unknown, " Operation 未能核对"],
     ] as const;
-    const warnings = details.flatMap(([operations, reason]) =>
-      operations.size ? [`${operations.size} 个 Operation ${reason}（${[...operations].join("、")}）`] : []);
-    if (warnings.length) advice.push(`${service} 指标基线（回看 ${baseline.windowSeconds}s）：${warnings.join("；")}。详见「指标质量」。`);
+    const details = warnings.flatMap(([operations, reason]) =>
+      operations.size ? [`${operations.size} 个${reason}（${[...operations].join("、")}）`] : []);
+    if (details.length) advice.push({level:"warn",message:`${prefix}${details.join("；")}。详见「指标质量」。`});
+    if (other.size) advice.push({level:"info",message:
+      `${prefix}${other.size} 个非入口 Operation 在回看窗口内无匹配的必需时序（${[...other].join("、")}）。详见「指标质量」。`});
   }
   return advice;
 }

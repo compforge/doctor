@@ -12,7 +12,7 @@ import { perfAdapterFromCaseFactory } from "../src/perf";
 import { finalizeResult } from "./report-fixture";
 import { perfCommand } from "../src/perf/command";
 import { openMetricDB } from "../src/datasource/metricdb";
-import { collectPerfMetrics, observePerf, preparePerfMetrics, perfMetricsComplete } from "../src/perf/observations";
+import { collectPerfMetrics, formatMetricCoverageWarning, observePerf, preparePerfMetrics, perfMetricIssues, perfMetricsComplete } from "../src/perf/observations";
 import { writePerfMetadata } from "../src/perf/output";
 import { writePerfReport } from "../src/perf/report";
 
@@ -122,8 +122,16 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     }
     expect(before).not.toContain('"observes"');
     expect(before).not.toContain('"calls"');
-    const automatic = await observePerf(run, directory, [operation], context);
+    const prepared = await preparePerfMetrics([operation], context, undefined, [], undefined, [{
+      service:"chat", groups:[{state:"active", count:2, intervalSeconds:60}],
+    }]);
+    const automatic = await observePerf(run, directory, [operation], context, undefined, prepared);
     expect(automatic).toEqual({ metricsComplete: true, metricIssues: [] });
+    const queries = run.executions[0]!.prometheus_observations!;
+    expect(queries.find(query => query.step_s !== null)?.expression).toContain("[240s]");
+    expect(queries.filter(query => query.step_s === null).map(query => query.expression))
+      .toEqual(queries.filter(query => query.step_s === null).map(query =>
+        `sum(rate(chat_total{namespace="declared-scope"}[${Math.round((query.end_s - query.start_s) * 1000) + 1}ms]))`));
     expect(metrics).toBeGreaterThan(0);
     expect(perfMetricsComplete(run)).toBe(true);
     expect(JSON.stringify(buildCallgraph(run))).toContain('"value":0');
@@ -338,6 +346,22 @@ test("metric preflight detects backend without querying application metrics", as
     expect(ready.issues).toEqual([]);
     expect(ready.probes.length).toBeGreaterThan(0);
     expect(calls).toBe(1);
+    const override = new SSEOperation({
+      serviceName:"chat", name:"override", method:"POST", path:"/override",
+      observes:[{type:"metricdb", metrics:{qps:{
+        category:"red:qps", unit:"rps", expression:"sum(rate(request_total[$window]))", trendWindowSeconds:90,
+      }}}],
+    });
+    const withScrapes = await preparePerfMetrics([operation, override], context, undefined, [], undefined, [
+      {service:"other", groups:[{state:"active", count:1, intervalSeconds:60}]},
+      {service:"chat", groups:[{state:"active", count:1, intervalSeconds:15}]},
+    ]);
+    expect(withScrapes.probes.map(probe => probe.summaries[0]?.trendWindowSeconds)).toEqual([undefined,90]);
+    const slow = await preparePerfMetrics([override], context, undefined, [], undefined, [
+      {service:"chat", groups:[{state:"active",count:1,intervalSeconds:60}]},
+    ]);
+    expect(slow.probes[0]?.summaries[0]?.trendWindowSeconds).toBe(90);
+    expect(calls).toBe(3);
   } finally { await context.disposeClients(); await missing.disposeClients(); server.stop(true); }
 });
 
@@ -368,9 +392,11 @@ test("natural observation preserves independent observed, missing and failed RED
     expect(metrics.error_rate).toMatchObject({status:"missing",value:null,reason:"empty_result"});
     const coverage = result.output!.metricIssues!.join("\n");
     expect(coverage).toContain("查询成功，当前窗口无可计算值");
-    expect(coverage).toContain("只有 1 个采样点");
-    expect(coverage).toContain("属预期情况");
-    expect(coverage).toContain("不能仅凭此确认原因");
+    expect(coverage).toContain("抓取周期、基线样本及实际 hold");
+    const warning = formatMetricCoverageWarning(perfMetricIssues(result.output!.run));
+    expect(warning).toContain("入口 Operation");
+    expect(warning).toContain("查询失败");
+    expect(warning).toContain("窗口无可计算值");
     expect(readFileSync(writePerfReport(result.output!), "utf8")).toContain("指标覆盖明细");
     expect(result.output!.metricIssues?.join()).toContain("p95：查询失败");
   } finally {await context.disposeClients();server.stop(true);cleanupTemporaryArtifacts(context.artifacts.list().map(a=>a.path));}

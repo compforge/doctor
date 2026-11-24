@@ -2,7 +2,7 @@ import { cpSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Operation, Service } from "@compforge/harness-common";
 import { workloadResourceObservation, type MetricDBReader } from "@compforge/harness-toolbox/metricdb";
-import { buildCallgraph, collectMetrics, loadRun, rangeObservation, serviceMetricProbes, operationMetricProbes, planMetrics, writeRunData, observesOnly, type Run, type PrometheusProbe } from "@compforge/perf-harness";
+import { buildCallgraph, collectMetrics, loadRun, rangeObservation, serviceMetricProbes, operationMetricProbes, planMetrics, writeRunData, observesOnly, type Run, type PrometheusProbe, type ServiceScrapeCoverage } from "@compforge/perf-harness";
 import { CommandInputError, CommandStatus, type CommandContext, type CommandResult } from "../command";
 import { useLogger } from "../terminal/log";
 import { diagnosticMessage } from "../command/diagnostic";
@@ -33,13 +33,36 @@ export interface PreparedPerfMetrics {
   issues: string[];
 }
 
+/** @why A one-period lookback can contain just one scrape, leaving rate and histogram trends empty even when the target is up. */
+function operationTrendWindows(probes: PrometheusProbe[], scrapes: readonly ServiceScrapeCoverage[]): PrometheusProbe[] {
+  const intervals = new Map(scrapes.map(({service, groups}) => [
+    service, Math.max(0, ...groups.filter(group => group.state === "active").map(group => group.intervalSeconds ?? 0)),
+  ]));
+  const adjusted = new Map<string, number>();
+  const result = probes.map(probe => {
+    const seconds = Math.ceil(4 * (intervals.get(probe.service) ?? 0));
+    if (seconds <= 60) return probe;
+    const summaries = probe.summaries.map(summary => {
+      if (summary.trendWindowSeconds !== undefined || !summary.promql.includes("$window")) return summary;
+      adjusted.set(probe.service, seconds);
+      return {...summary, trendWindowSeconds:seconds};
+    });
+    return {...probe, summaries};
+  });
+  for (const [service, seconds] of adjusted) {
+    useLogger("perf").info(`${service} 指标趋势：滚动窗口 ${seconds}s（4 个抓取周期）；窗口汇总按实际观测时间计算。`);
+  }
+  return result;
+}
+
 /**
  * @spec Observations read externally collected metrics through MetricDB for the realized run windows.
  * @why Missing metrics remain evidence gaps; diagnosis must not start a second scraper or query engine.
  * @link cli/docs/commands/perf.md
  */
 export async function preparePerfMetrics(operations: readonly Operation[], context: CommandContext,
-  source?: string | ReturnType<typeof openMetricDB>, services: readonly Pick<Service,"name"|"workloads"|"observes">[] = [], namespace?: string): Promise<PreparedPerfMetrics> {
+  source?: string | ReturnType<typeof openMetricDB>, services: readonly Pick<Service,"name"|"workloads"|"observes">[] = [],
+  namespace?: string, scrapes: readonly ServiceScrapeCoverage[] = []): Promise<PreparedPerfMetrics> {
   const declared = operations.filter(operation => operation.observes?.some(item => item.type === "metricdb"));
   const targets = services.filter(service => service.workloads.length || service.observes?.some(item => item.type === "metricdb"));
   const prepared: PreparedPerfMetrics = { declared: declared.length + targets.length > 0, probes: [], issues: [] };
@@ -61,6 +84,7 @@ export async function preparePerfMetrics(operations: readonly Operation[], conte
           missing(`${operation.id()} 指标未采集：${diagnosticMessage(error)}`);
         }
       }
+      prepared.probes = operationTrendWindows(prepared.probes, scrapes);
       const backend = prepared.source.kind;
       for (const service of targets) {
         const declarations = [...(service.observes ?? [])];
@@ -91,36 +115,74 @@ export async function preparePerfMetrics(operations: readonly Operation[], conte
   return prepared;
 }
 
-function rangeIssues(run: Run): string[] {
-  return run.executions.flatMap(arm => (arm.prometheus_observations ?? []).flatMap(query => {
-    if (query.step_s === null) return [];
-    const { status } = rangeObservation(arm, query);
-    const reason = { query_error: "查询失败", not_collected: "尚未采集", empty_result: "窗口内无可用点", observed: undefined }[status];
-    return reason ? [`${arm.id} / ${query.metric} 时间序列：${reason}`] : [];
-  }));
+const issueLabels = {
+  query_error: "查询失败",
+  not_collected: "尚未采集",
+  empty_trend: "趋势无可用点",
+  empty_window: "窗口无可计算值",
+  no_observations: "直方图无观测增量",
+} as const;
+
+const windowIssueDetails = {
+  ...issueLabels,
+  empty_window: "查询成功，当前窗口无可计算值。请结合「指标质量」的抓取周期、基线样本及实际 hold 核对。",
+  no_observations: "查询成功，直方图在当前窗口没有可用于计算分位数的观测增量。",
+};
+
+interface MetricIssue {
+  kind: keyof typeof issueLabels;
+  entry: boolean;
+  message: string;
+}
+
+function rangeIssues(run: Run): MetricIssue[] {
+  const entries = new Set(run.entry_ids);
+  const issues: MetricIssue[] = [];
+  for (const arm of run.executions) for (const query of arm.prometheus_observations ?? []) {
+    if (query.step_s === null) continue;
+    const {status} = rangeObservation(arm, query);
+    if (status === "observed") continue;
+    const kind = status === "empty_result" ? "empty_trend" : status;
+    issues.push({kind, entry:entries.has(query.labels.operation ?? ""),
+      message:`${arm.id} / ${query.metric} 时间序列：${status === "empty_result" ? "窗口内无可用点" : issueLabels[kind]}`});
+  }
+  return issues;
 }
 
 /** Query evidence, not scrape assumptions: an empty result cannot identify why a source has no samples. */
-export function perfMetricIssues(run: Run): string[] {
-  const issues = new Set(rangeIssues(run));
+export function perfMetricIssues(run: Run): MetricIssue[] {
+  const issues = new Map(rangeIssues(run).map(issue => [issue.message, issue]));
   const graph = buildCallgraph(run);
+  const entries = new Set(graph?.entry_ids ?? run.entry_ids);
   for (const arm of graph?.arms ?? []) for (const window of arm.windows) for (const node of window.nodes) {
     for (const [role, metric] of Object.entries(node.properties.perf.metrics)) {
       if (!metric.queries.length || metric.status === "observed") continue;
-      const detail = metric.status === "error" ? "查询失败"
-        : metric.reason === "not_collected" ? "尚未采集"
-        : metric.reason === "empty_result" ? "查询成功，当前窗口无可计算值；若 hold 相对 scrape 间隔过短、窗口内只有 1 个采样点，无法计算增量属预期情况，建议延长 hold 至 4～5 个采样周期；空结果也可能没有匹配时序，不能仅凭此确认原因"
-        : metric.reason === "no_observations" ? "查询成功，直方图在当前窗口没有可用于计算分位数的观测增量（不等同于未采集）"
-        : "查询成功，当前窗口无可计算值（不等同于未采集或 scrape 故障）";
-      issues.add(`${node.id} / ${arm.id}/${window.id} / ${role}：${detail}`);
+      const kind = metric.status === "error" ? "query_error"
+        : metric.reason === "not_collected" || metric.reason === "no_observations" ? metric.reason : "empty_window";
+      const message = `${node.id} / ${arm.id}/${window.id} / ${role}：${windowIssueDetails[kind]}`;
+      issues.set(message, {kind, entry:entries.has(node.id), message});
     }
   }
   // Graph-less saved runs still retain query-level failures and unfinished reads.
   if (!graph) for (const arm of run.executions) for (const query of arm.prometheus_observations ?? []) {
-    if (query.error || query.collected_at_s === null)
-      issues.add(`${query.labels.operation ?? query.metric}：${query.error ? "查询失败" : "尚未采集"}`);
+    if (query.step_s !== null || (!query.error && query.collected_at_s !== null)) continue;
+    const kind = query.error ? "query_error" : "not_collected";
+    const message = `${arm.id}/${query.window_id} / ${query.metric}：${issueLabels[kind]}`;
+    issues.set(message, {kind, entry:entries.has(query.labels.operation ?? ""), message});
   }
-  return [...issues];
+  return [...issues.values()];
+}
+
+export function formatMetricCoverageWarning(issues: readonly MetricIssue[]): string {
+  const counts: Partial<Record<MetricIssue["kind"], number>> = {};
+  let entryCount = 0;
+  for (const {kind, entry} of issues) {
+    counts[kind] = (counts[kind] ?? 0) + 1;
+    if (entry) entryCount++;
+  }
+  const details = (Object.keys(issueLabels) as MetricIssue["kind"][]).flatMap(kind =>
+    counts[kind] ? [`${issueLabels[kind]} ${counts[kind]}`] : []);
+  return `指标覆盖不完整，共 ${issues.length} 项（入口 Operation ${entryCount} 项）。${details.join("，")}。详见「指标质量」及 perf.json 的 metricIssues。`;
 }
 
 /** @spec Declared observations are collected automatically; unavailable metrics cannot discard request facts or sibling observations. */
@@ -141,8 +203,8 @@ export async function observePerf(run: Run, directory: string, operations: reado
       useLogger("perf").info(`请求与查询计划已保存；自动查询 ${plan.probes.length} 组指标`);
       await collectPerfMetrics(run, directory, plan.source, context.signal);
       const gaps = perfMetricIssues(run);
-      metricIssues.push(...gaps);
-      if (gaps.length) useLogger("perf").warn(`指标覆盖存在 ${gaps.length} 项缺口；详见 Evidence Bundle 中 perf.json 的 metricIssues`);
+      metricIssues.push(...gaps.map(gap => gap.message));
+      if (gaps.length) useLogger("perf").warn(formatMetricCoverageWarning(gaps));
     }
   } catch (error) { missing(`指标采集未完成：${diagnosticMessage(error)}`); }
   finally { writeRunData(run, directory); }
