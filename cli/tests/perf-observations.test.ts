@@ -11,7 +11,8 @@ import { CommandContext, CommandInputError, CommandStatus } from "../src/command
 import { perfAdapterFromCaseFactory } from "../src/perf";
 import { finalizeResult } from "./report-fixture";
 import { perfCommand } from "../src/perf/command";
-import { collectPerfMetrics, observePerf, preparePerfMetrics, perfMetricSource, perfMetricsComplete } from "../src/perf/observations";
+import { openMetricDB } from "../src/datasource/metricdb";
+import { collectPerfMetrics, observePerf, preparePerfMetrics, perfMetricsComplete } from "../src/perf/observations";
 import { writePerfMetadata } from "../src/perf/output";
 import { writePerfReport } from "../src/perf/report";
 
@@ -136,7 +137,7 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     expect(perfMetricsComplete(mixedRun)).toBe(true);
     expect(readFileSync(writePerfReport({ run: mixedRun, outputDir: directory, ...partial }), "utf8")).toContain("指标覆盖明细");
     response = "missing";
-    const source = await perfMetricSource(context);
+    const source = await (await openMetricDB(context))?.connectQuery(context.signal);
     if (!source) throw new Error("fixture Prometheus source missing");
     await collectPerfMetrics(run, directory, source, context.signal);
     expect(perfMetricsComplete(run)).toBe(false);
@@ -194,17 +195,23 @@ test("QPS zero observes all registered observations without Kubernetes, identity
   let queries=0;
   let collectorAvailable = true;
   const yaml = "# original formatting\nglobal: {scrape_interval: 1m}\nscrape_configs: [{job_name: chat-pool, scrape_interval: 15s}]\n";
+  let targetsAvailable = true;
+  const states: (string | null)[] = [];
   const targets = JSON.stringify({status:"success",data:{activeTargets:[
     {labels:{service:"chat", namespace:"production"}, scrapePool:"chat-pool", scrapeUrl:"http://private", health:"up"},
     {labels:{service:"chat", namespace:"elsewhere"}, scrapeInterval:"5m", scrapeUrl:"http://unrelated"},
-  ],droppedTargets:[]}}, null, 2);
+  ]}}, null, 2);
 
   const server=Bun.serve({port:0,fetch(request) {
     const url=new URL(request.url);const detection=backendDetection(url);if(detection)return detection;
     if (url.pathname.endsWith("/status/config")) return collectorAvailable
       ? Response.json({status:"success",data:{yaml}}) : new Response(null, {status:403});
-    if (url.pathname.endsWith("/targets")) return collectorAvailable
-      ? new Response(targets) : new Response(null, {status:404});
+    if (url.pathname.endsWith("/targets")) {
+      const state = url.searchParams.get("state");
+      states.push(state);
+      if (!collectorAvailable || !targetsAvailable) return new Response(null, {status:404});
+      return new Response(targets);
+    }
     if (url.pathname === "/api/v1/query_range") return Response.json({status:"success", data:{resultType:"matrix",
       result:[{metric:{}, values:[[Number(url.searchParams.get("start")), "7"]]}]}});
     expect(url.pathname).toBe("/api/v1/query");queries++;
@@ -222,6 +229,7 @@ test("QPS zero observes all registered observations without Kubernetes, identity
     const result=await perfCommand.run(context,{service:"chat",qps:"0",hold:"0.03"});
     expect({status:result.status, reason:"reason" in result ? result.reason : undefined}).toEqual({status:CommandStatus.Ok,reason:undefined});
     expect(queries).toBeGreaterThanOrEqual(4);
+    expect(states).toEqual(["active"]);
     const snapshot = result.output!.scrape;
     expect(snapshot).toMatchObject({recommendedHoldSeconds:60, groups:[{pool:"chat-pool", intervalSeconds:15, intervalSource:"config"}]});
     const saved = readFileSync(join(result.output!.outputDir, "perf.json"), "utf8");
@@ -275,12 +283,19 @@ test("QPS zero observes all registered observations without Kubernetes, identity
     expect(html).toContain('id="callgraph-menu"');
     expect(html).toContain("抓取任务 chat-pool");
     expect(html).toContain('<td data-v="N/A">N/A</td>');
+    targetsAvailable = false;
+    const partialArchive = await perfCommand.run(context,{service:"chat",qps:"0",hold:"0.03"});
+    expect(partialArchive.status).toBe(CommandStatus.Ok);
+    expect(partialArchive.output!.scrape).toMatchObject({targetsError:"HTTP 404 (resource_not_found)"});
+    expect(readFileSync(join(partialArchive.output!.outputDir, "raw/scrape/config.yaml"), "utf8")).toBe(yaml);
+    expect(existsSync(join(partialArchive.output!.outputDir, "raw/scrape/targets.json"))).toBe(false);
     collectorAvailable = false;
     const unavailable = await perfCommand.run(context,{service:"chat",qps:"0",hold:"0.03"});
     expect(unavailable.status).toBe(CommandStatus.Ok);
     expect(unavailable.output!.metricsComplete).toBe(true);
     expect(unavailable.output!.scrape).toMatchObject({configError:"HTTP 403 (permission_denied)",targetsError:"HTTP 404 (resource_not_found)"});
     expect(existsSync(join(unavailable.output!.outputDir,"raw/scrape"))).toBe(false);
+    expect(states).toEqual(["active", "active", "active"]);
   } finally {await context.disposeClients();server.stop(true);cleanupTemporaryArtifacts(context.artifacts.list().map(a=>a.path));rmSync(directory,{recursive:true,force:true});}
 }, 30_000);
 

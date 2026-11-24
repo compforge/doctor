@@ -1,4 +1,4 @@
-import type { MetricDBKind } from "@compforge/harness-toolbox/metricdb";
+import type { MetricDBOptions } from "@compforge/harness-toolbox/metricdb";
 
 export interface DbCredentials {
   user: string;
@@ -23,16 +23,7 @@ export interface RegistryProfileConfig {
 }
 
 /** Metric source access only; observation declarations own queries. An omitted kind enables capability detection. */
-export interface MetricEndpoint {
-  url: string;
-  username?: string;
-  password?: string;
-}
-
-export interface MetricDBProfileConfig extends MetricEndpoint {
-  kind?: MetricDBKind;
-  collector?: MetricEndpoint;
-}
+export type MetricDBProfileConfig = Omit<MetricDBOptions, "headers">;
 
 export interface PluginProfileConfig {
   /** Opaque Plugin-owned config; Core dataSources and forwards it without interpreting the schema. */

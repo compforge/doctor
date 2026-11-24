@@ -5,7 +5,8 @@ import { caseRunnerProvider, createCaseRunner } from "../case/runners";
 import { bindService, type PluginDefinition, type ServiceCaseObservation, type ServiceCaseRunner } from "@compforge/doctor-plugin";
 import { graphFromServices, type Operation } from "@compforge/harness-common";
 import { Engine, writeRunData, type CaseMixEntry, type CaseSet, type Outcome, type Run, type Experiment } from "@compforge/perf-harness";
-import { probePerfScrape, scrapeAdvice, scrapeGroupSummary, ScrapeFiles } from "./scrape";
+import { probePerfScrape, scrapeAdvice, scrapeGroupSummary, type RawScrape, writeScrapeFile } from "./scrape";
+import { openMetricDB } from "../datasource/metricdb";
 import { observePerf, preparePerfMetrics } from "./observations";
 import { PerfProgress, formatPerfSummary } from "./progress";
 import { discoverTenantDirectory } from "../plugin/tenant-directory";
@@ -133,9 +134,11 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
   const target = await selectPerfTarget(plugin, opts, config.qps > 0);
   if (!target) return {status:CommandStatus.Cancelled, artifacts:[]};
   const namespace = resolveCollectNamespace(opts, context.profile).namespace;
-  const scrapeFiles = new ScrapeFiles();
-  const scrape = await probePerfScrape(context, target.service, namespace, opts.prometheus, scrapeFiles);
+  const client = openMetricDB(context, opts.prometheus);
+  const raw: RawScrape = {};
+  const scrape = await probePerfScrape(context, target.service, namespace, client, raw, opts);
   if (scrape) {
+    if (scrape.discoveredCollector) useLogger("perf").info(`已核对采集器 ${scrape.discoveredCollector} 的 active targets`);
     for (const group of scrape.groups) useLogger("perf").info(scrapeGroupSummary(group));
     if (scrape.recommendedHoldSeconds) {
       useLogger("perf").info(`按匹配到的最长抓取间隔，建议 hold 至少 ${scrape.recommendedHoldSeconds}s（4 个周期）`);
@@ -208,14 +211,15 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
     }
     adapter = routePerfCases(mix, adapters, inputs);
   }
-  const preparedMetrics = await preparePerfMetrics(declarations, context, opts.prometheus,
+  const preparedMetrics = await preparePerfMetrics(declarations, context, client,
     plugin.services.services, namespace);
   if (mix.caseSet) writeOutput(formatPerfCaseMix(mix.caseSet, mix.caseMix), process.stderr);
   const artifact = createPerfArtifact(config), outputDir = artifact.path;
   context.artifacts.add({command:"perf", path:outputDir});
   const metadata = {scrape, service:target.service.name, caseRefs:mix.caseRefs, caseEntries, caseSource:mix.sources.length === 1 ? {service:target.service.name, source:mix.sources[0]!.sourceId!} : undefined, operation:operation.id(),
     caseFacets:mix.caseSet?.facets ?? {}, caseIds:mix.caseMix.map(item => item.id)};
-  scrapeFiles.write(outputDir);
+  if (raw.configYaml !== undefined) writeScrapeFile(outputDir, "config.yaml", raw.configYaml);
+  if (raw.targets) writeScrapeFile(outputDir, "targets.json", raw.targets);
   writePerfMetadata(outputDir, metadata);
   const graph = graphFromServices(plugin.services.services.map(item => bindService(item, service.environment)), {
     source:`declared:plugin/${plugin.id}`, version:plugin.version});
