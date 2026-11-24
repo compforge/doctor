@@ -3,9 +3,12 @@ import { parseDuration } from "@compforge/harness-toolbox/duration";
 import { ToolboxError } from "@compforge/harness-toolbox/errors";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { HttpResponse } from "@compforge/harness-toolbox/http";
+import { MetricDBError, matchesScrapeTarget, vmSelectTenant, listVMAgentInstances, findVMAgentCollectors, type VMAgentCollector, type MetricDBClient } from "@compforge/harness-toolbox/metricdb";
 import type { CommandContext } from "../command";
-import { openScrapeReader } from "../datasource/metricdb";
+
+import { kubernetesClientSource } from "../infra/k8s/resources";
+import { resolveCollectKubeconfig } from "../infra/k8s/context";
+import type { KubernetesCommandInput } from "../command/kubernetes-target";
 
 type ScrapeService = Pick<Service, "name" | "workloads">;
 
@@ -25,57 +28,23 @@ export interface PerfScrape {
   endpoint: "collector" | "metricdb";
   configError?: string;
   targetsError?: string;
+  discoveredCollector?: string;
+  discoveryIssue?: string;
+  vmagentInstances?: string[];
   groups: ScrapeGroup[];
   recommendedHoldSeconds?: number;
 }
 
-/** Archive the collector's response, independent of Service matching and report rendering. */
-export class ScrapeFiles {
-  private config?: string;
-  private targets?: Uint8Array;
-
-  capture(url: string, response: HttpResponse): void {
-    if (response.status !== 200) return;
-    const path = new URL(url).pathname;
-    if (path.endsWith("/targets")) {
-      this.targets = response.body;
-    } else if (path.endsWith("/status/config")) {
-      // The API encloses the original YAML string in JSON. Preserve comments and formatting.
-      try {
-        const envelope = JSON.parse(new TextDecoder().decode(response.body));
-        if (envelope?.status === "success" && typeof envelope.data?.yaml === "string") this.config = envelope.data.yaml;
-      } catch { /* The reader records invalid_response in the scrape summary. */ }
-    }
-  }
-
-  write(directory: string): void {
-    if (this.config === undefined && this.targets === undefined) return;
-    const raw = join(directory, "raw", "scrape");
-    mkdirSync(raw, {recursive: true});
-    if (this.config !== undefined) writeFileSync(join(raw, "config.yaml"), this.config, {mode: 0o600});
-    if (this.targets !== undefined) writeFileSync(join(raw, "targets.json"), this.targets, {mode: 0o600});
-  }
+export interface RawScrape {
+  configYaml?: string;
+  targets?: Uint8Array;
 }
 
-function matchesTarget(service: ScrapeService, namespace: string, target: ScrapeTarget): boolean {
-  const meta = target.discoveredLabels ?? {};
-  const labels = target.labels ?? {};
-  const ns = meta.__meta_kubernetes_namespace ?? labels.namespace;
-  const serviceName = meta.__meta_kubernetes_service_name ?? labels.service;
-  if (!service.workloads.length) return ns === namespace && serviceName === service.name;
-  return service.workloads.some(workload => {
-    if (ns !== (workload.namespace ?? namespace)) return false;
-    const location = workload.location;
-    if (location.kind === "service") return serviceName === location.name;
-    if (location.kind === "labels") {
-      const entries = Object.entries(location.labels);
-      return entries.length > 0 && entries.every(([key, value]) =>
-        meta["__meta_kubernetes_pod_label_" + key.replace(/[^a-zA-Z0-9_]/g, "_")] === value);
-    }
-    if (location.resource_kind === "Pod") return (meta.__meta_kubernetes_pod_name ?? labels.pod) === location.name;
-    return meta.__meta_kubernetes_pod_controller_kind === location.resource_kind
-      && meta.__meta_kubernetes_pod_controller_name === location.name;
-  });
+/** Archive the collector's response, independent of Service matching and report rendering. */
+export function writeScrapeFile(directory: string, name: "config.yaml" | "targets.json", data: string | Uint8Array): void {
+  const raw = join(directory, "raw", "scrape");
+  mkdirSync(raw, {recursive: true});
+  writeFileSync(join(raw, name), data, {mode: 0o600});
 }
 
 function seconds(interval?: string): number | undefined {
@@ -83,42 +52,99 @@ function seconds(interval?: string): number | undefined {
   try { return parseDuration(interval) / 1000; } catch { return undefined; }
 }
 
-function failure(error: unknown, signal: AbortSignal): string {
+function scrapeFailure(error: unknown, signal: AbortSignal): string {
   if (error instanceof ToolboxError) return typeof error.code === "number" ? `HTTP ${error.code} (${error.kind})` : error.kind;
   return signal.aborted ? "timeout" : "unavailable";
 }
 
+async function discoverCollectors(context: CommandContext, url: string, namespace: string, opts: KubernetesCommandInput,
+  signal: AbortSignal): Promise<VMAgentCollector[]> {
+  const inspected = context.inspection.kubernetes;
+  if (inspected && !inspected.channel.available) throw new Error("Kubernetes unavailable");
+  const {kubeconfig} = inspected?.kubeconfig ?? resolveCollectKubeconfig(opts, context.profile);
+  const client = await context.clients.get(kubernetesClientSource({namespace, kubeconfig, context:inspected?.context ?? opts.context}));
+  return findVMAgentCollectors(client.clusterResources(), url, namespace, signal);
+}
+
+/** @rule Only a unique writer for this tenant with a matching active target supplies Perf evidence. */
+async function probeDiscoveredCollector(reader: MetricDBClient, service: ScrapeService, namespace: string,
+  context: CommandContext, opts: KubernetesCommandInput, signal: AbortSignal, scrape: PerfScrape, raw?: RawScrape) {
+  const candidates = await discoverCollectors(context, reader.url, namespace, opts, signal);
+  const names = candidates.map(candidate => candidate.namespace + "/" + candidate.service);
+  if (candidates.length !== 1) {
+    scrape.discoveryIssue = names.length ? `多个 VMAgent Service 写入当前租户：${names.join(", ")}。可显式配置 collector。`
+      : "VM Operator 拓扑未找到可核对的当前租户采集器。";
+    return;
+  }
+  const collector = reader.forCollector({url:candidates[0]!.url});
+  let body: Uint8Array | undefined;
+  const active = await collector.listScrapeTargets({state:"active"}, signal, bytes => { body = bytes; });
+  if (!active.some(target => matchesScrapeTarget(service, namespace, target))) {
+    scrape.discoveryIssue = `候选 ${names[0]} 未匹配到 ${namespace}/${service.name} 的 active target。`;
+    return;
+  }
+  scrape.discoveredCollector = names[0];
+  scrape.endpoint = "collector";
+  if (raw) { raw.targets = body; delete raw.configYaml; }
+  const [configs] = await Promise.allSettled([collector.getScrapeConfig(signal, raw && (yaml => { raw.configYaml = yaml; }))]);
+  return {configs, active};
+}
+
 /** @spec Only active targets matched to this Service contribute to its four-interval hold recommendation. */
-export async function probePerfScrape(context: CommandContext, service: ScrapeService, namespace: string, url?: string, files?: ScrapeFiles): Promise<PerfScrape | undefined> {
-  const profile = context.profile.value.metricdb;
-  const override = url?.trim();
-  const access = override && override !== profile?.url ? {url: override} : profile?.collector ?? profile;
-  if (!access) return;
-  const scrape: PerfScrape = { service: service.name, namespace, endpoint: access === profile?.collector ? "collector" : "metricdb", groups: [] };
+export async function probePerfScrape(context: CommandContext, service: ScrapeService, namespace: string,
+  client: Promise<MetricDBClient | undefined>, raw?: RawScrape, opts: KubernetesCommandInput = {}): Promise<PerfScrape | undefined> {
+  const scrape: PerfScrape = {service: service.name, namespace, endpoint: "metricdb", groups: []};
   const signal = AbortSignal.any([context.signal, AbortSignal.timeout(5000)]);
   let reader;
-  try { reader = await openScrapeReader(context, access, files?.capture.bind(files)); }
-  catch (error) {
+  try {
+    reader = await client;
+    if (!reader) return;
+    scrape.endpoint = reader.scrapeEndpoint;
+  } catch (error) {
     context.signal.throwIfAborted();
-    scrape.configError = scrape.targetsError = failure(error, signal);
+    scrape.configError = scrape.targetsError = scrapeFailure(error, signal);
     return scrape;
   }
-  const [configs, targets] = await Promise.allSettled([reader.getScrapeConfig(signal), reader.listScrapeTargets({state: "any"}, signal)]);
+  let [configs, targets] = await Promise.allSettled([
+    reader.getScrapeConfig(signal, raw && (yaml => { raw.configYaml = yaml; })),
+    // @why state=any includes dropped targets and can return tens of MiB. Archive the active probe itself.
+    reader.listScrapeTargets({state: "active"}, signal, raw && (body => { raw.targets = body; })),
+  ]);
+  // A reachable targets API or an explicit collector already determines where discovery runs.
+  if (reader.scrapeEndpoint === "metricdb" && targets.status === "rejected" && !signal.aborted
+    && targets.reason instanceof MetricDBError && [400,404,405,501].includes(Number(targets.reason.code))
+    && vmSelectTenant(reader.url) !== undefined) {
+    try {
+      const discovered = await probeDiscoveredCollector(reader, service, namespace, context, opts, signal, scrape, raw);
+      if (discovered) {
+        configs = discovered.configs;
+        targets = {status:"fulfilled", value:discovered.active};
+      }
+    } catch (error) {
+      context.signal.throwIfAborted();
+      scrape.discoveryIssue = `VM Operator 采集器发现未完成（${scrapeFailure(error, signal)}）。`;
+    }
+    if (scrape.discoveryIssue && !signal.aborted) {
+      try {
+        const instances = await listVMAgentInstances(reader, Date.now() / 1000, signal);
+        if (instances.length) scrape.vmagentInstances = instances;
+      } catch { context.signal.throwIfAborted(); }
+    }
+  }
   context.signal.throwIfAborted();
-  if (configs.status === "rejected") scrape.configError = failure(configs.reason, signal);
+  if (configs.status === "rejected") scrape.configError = scrapeFailure(configs.reason, signal);
   if (targets.status === "rejected") {
-    scrape.targetsError = failure(targets.reason, signal);
+    scrape.targetsError = scrapeFailure(targets.reason, signal);
     return scrape;
   }
   const jobs = new Map((configs.status === "fulfilled" ? configs.value : []).map(job => [job.jobName, job]));
   const groups = new Map<string, ScrapeGroup>();
   for (const target of targets.value) {
-    if (!matchesTarget(service, namespace, target)) continue;
+    if (!matchesScrapeTarget(service, namespace, target)) continue;
     const pool = target.scrapePool;
-    const active = target.state === "active";
-    const targetInterval = active ? seconds(target.scrapeInterval) : undefined;
-    const intervalSeconds = targetInterval ?? (active && pool ? seconds(jobs.get(pool)?.scrapeInterval) : undefined);
-    const group: ScrapeGroup = { pool, state: target.state, health: active ? target.health : undefined, intervalSeconds,
+    const targetInterval = seconds(target.scrapeInterval);
+    const intervalSeconds = targetInterval ?? (pool ? seconds(jobs.get(pool)?.scrapeInterval) : undefined);
+    const group: ScrapeGroup = { pool, state: target.state, health: target.health, intervalSeconds,
       intervalSource: targetInterval ? "target" : intervalSeconds ? "config" : undefined, count: 1 };
     const key = JSON.stringify(group);
     const existing = groups.get(key);
@@ -137,6 +163,8 @@ export function scrapeGroupSummary(group: ScrapeGroup): string {
 
 export function scrapeAdvice(scrape: PerfScrape, hold?: number): string[] {
   const lines: string[] = [];
+  if (scrape.discoveryIssue) lines.push(scrape.discoveryIssue);
+  if (scrape.vmagentInstances?.length) lines.push(`vmagent 自监控指标中的 instance（仅供定位）：${scrape.vmagentInstances.join(", ")}。`);
   if (scrape.configError) lines.push(`config API：${scrape.configError}。`);
   if (scrape.targetsError) lines.push(`targets API：${scrape.targetsError}。`);
   if (scrape.configError || scrape.targetsError) lines.push("核对采集器 API 地址和读取权限；采集与存储分离时可配置 metricdb.collector.url。");

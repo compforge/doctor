@@ -11,13 +11,6 @@ import { createPerfArtifact } from "./output";
 import { resolvePerfConfig } from "./config";
 import type { PerfCliOpts, PerfResult } from "./model";
 
-/** Borrow the command's bounded HTTP pool. Credentials never enter persisted query identity. */
-export async function perfMetricSource(context: CommandContext, url?: string): Promise<MetricDBReader | undefined> {
-  const profile = context.profile.value.metricdb;
-  const endpoint = url?.trim() || profile?.url;
-  return endpoint ? openMetricDB(context, { ...profile, url: endpoint }) : undefined;
-}
-
 export function perfMetricsComplete(run: Run): boolean {
   const queries = run.executions.flatMap(arm => arm.prometheus_observations ?? []);
   if (!queries.length || queries.some(query => query.collected_at_s === null || query.error !== null)) return false;
@@ -46,7 +39,7 @@ export interface PreparedPerfMetrics {
  * @link cli/docs/commands/perf.md
  */
 export async function preparePerfMetrics(operations: readonly Operation[], context: CommandContext,
-  url?: string, services: readonly Pick<Service,"name"|"workloads"|"observes">[] = [], namespace?: string): Promise<PreparedPerfMetrics> {
+  source?: string | ReturnType<typeof openMetricDB>, services: readonly Pick<Service,"name"|"workloads"|"observes">[] = [], namespace?: string): Promise<PreparedPerfMetrics> {
   const declared = operations.filter(operation => operation.observes?.some(item => item.type === "metricdb"));
   const targets = services.filter(service => service.workloads.length || service.observes?.some(item => item.type === "metricdb"));
   const prepared: PreparedPerfMetrics = { declared: declared.length + targets.length > 0, probes: [], issues: [] };
@@ -56,7 +49,8 @@ export async function preparePerfMetrics(operations: readonly Operation[], conte
     return prepared;
   }
   try {
-    prepared.source = await perfMetricSource(context, url);
+    const reader = await (typeof source === "string" || source === undefined ? openMetricDB(context, source) : source);
+    prepared.source = await reader?.connectQuery(context.signal);
     if (!prepared.source) {
       missing("已声明观测指标，但未配置 metricdb（Prometheus/VM）；本轮仅保留运行窗口与已有请求事实");
     } else {
