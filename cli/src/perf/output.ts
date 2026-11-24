@@ -17,6 +17,7 @@ export function createPerfArtifact(config: PerfConfig): PerfArtifact {
 }
 
 export interface PerfMetadata {
+  metricBaseline?: PerfResult["metricBaseline"];
   scrape?: PerfResult["scrape"];
   service?: string;
   caseCounts?: Record<string, number>;

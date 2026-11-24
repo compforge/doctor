@@ -1,6 +1,6 @@
 import type { PerfScrape } from "./scrape";
 import type { FacetSpec } from "@compforge/spec-case/model";
-import type { Run } from "@compforge/perf-harness";
+import type { MetricQualityBaseline, Run } from "@compforge/perf-harness";
 
 export interface PerfCliOpts {
 
@@ -51,6 +51,7 @@ export interface PerfResult {
   outputDir: string;
   metricsComplete: boolean;
   scrape?: PerfScrape;
+  metricBaseline?: MetricQualityBaseline;
   metricIssues?: readonly string[];
   caseFacets?: Readonly<Record<string, FacetSpec>>;
 }
