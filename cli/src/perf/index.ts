@@ -5,6 +5,7 @@ import { caseRunnerProvider, createCaseRunner } from "../case/runners";
 import { bindService, type PluginDefinition, type ServiceCaseObservation, type ServiceCaseRunner } from "@compforge/doctor-plugin";
 import { graphFromServices, type Operation } from "@compforge/harness-common";
 import { Engine, writeRunData, type CaseMixEntry, type CaseSet, type Outcome, type Run, type Experiment } from "@compforge/perf-harness";
+import { inspectMetricBaseline, metricBaselineAdvice } from "./quality";
 import { probePerfScrape, scrapeAdvice, scrapeGroupSummary, type RawScrape, writeScrapeFile } from "./scrape";
 import { openMetricDB } from "../datasource/metricdb";
 import { observePerf, preparePerfMetrics } from "./observations";
@@ -136,7 +137,7 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
   const namespace = resolveCollectNamespace(opts, context.profile).namespace;
   const client = openMetricDB(context, opts.prometheus);
   const raw: RawScrape = {};
-  const scrape = await probePerfScrape(context, target.service, namespace, client, raw, opts);
+  const scrape = await probePerfScrape(context, target.service, namespace, client, raw, opts, plugin.services.services);
   if (scrape) {
     if (scrape.discoveredCollector) useLogger("perf").info(`已核对采集器 ${scrape.discoveredCollector} 的 active targets`);
     for (const group of scrape.groups) useLogger("perf").info(scrapeGroupSummary(group));
@@ -164,6 +165,15 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
   const entryIds = [...new Set([operation.id(), ...Object.values(caseEntries)])];
   const loads = perfLoadPlans(config);
   const declarations = plugin.services.operations().map(item => item.operation);
+  const preparedMetrics = await preparePerfMetrics(declarations, context, client,
+    plugin.services.services, namespace);
+  const metricBaseline = await inspectMetricBaseline(preparedMetrics, config.holdSeconds, context.signal);
+  for (const coverage of scrape?.services ?? []) {
+    const interval = Math.max(0, ...coverage.groups.map(group => group.intervalSeconds ?? 0));
+    if (interval * 4 > config.holdSeconds) useLogger("perf").warn(
+      `${coverage.service}：最长抓取周期 ${interval}s，计划 hold ${config.holdSeconds}s；建议缩短该 job 的间隔或将实际 hold 延长至 ${4*interval}s。`);
+  }
+  if (metricBaseline) for (const line of metricBaselineAdvice(metricBaseline)) useLogger("perf").warn(line);
   let service = bindService(target.service, {name:context.profile.name});
   const contexts: Awaited<ReturnType<typeof openPluginContext>>[] = [];
   let adapter: Pick<Experiment, "runner" | "judge"> = {};
@@ -211,12 +221,10 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
     }
     adapter = routePerfCases(mix, adapters, inputs);
   }
-  const preparedMetrics = await preparePerfMetrics(declarations, context, client,
-    plugin.services.services, namespace);
   if (mix.caseSet) writeOutput(formatPerfCaseMix(mix.caseSet, mix.caseMix), process.stderr);
   const artifact = createPerfArtifact(config), outputDir = artifact.path;
   context.artifacts.add({command:"perf", path:outputDir});
-  const metadata = {scrape, service:target.service.name, caseRefs:mix.caseRefs, caseEntries, caseSource:mix.sources.length === 1 ? {service:target.service.name, source:mix.sources[0]!.sourceId!} : undefined, operation:operation.id(),
+  const metadata = {scrape, metricBaseline, service:target.service.name, caseRefs:mix.caseRefs, caseEntries, caseSource:mix.sources.length === 1 ? {service:target.service.name, source:mix.sources[0]!.sourceId!} : undefined, operation:operation.id(),
     caseFacets:mix.caseSet?.facets ?? {}, caseIds:mix.caseMix.map(item => item.id)};
   if (raw.configYaml !== undefined) writeScrapeFile(outputDir, "config.yaml", raw.configYaml);
   if (raw.targets) writeScrapeFile(outputDir, "targets.json", raw.targets);
@@ -259,6 +267,6 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
     writeOutput(formatPerfSummary(run, metrics.metricIssues), process.stderr);
     return {status:context.signal.aborted ? CommandStatus.Cancelled : failure || run.status !== "completed" || !metrics.metricsComplete ? CommandStatus.Partial : CommandStatus.Ok,
       reason:failure ? diagnosticMessage(failure) : undefined,
-      output:{run, outputDir, scrape, ...metrics, caseFacets:mix.caseSet?.facets}, artifacts:context.artifacts.list()};
+      output:{run, outputDir, scrape, metricBaseline, ...metrics, caseFacets:mix.caseSet?.facets}, artifacts:context.artifacts.list()};
   } finally { progress.dispose(); }
 }

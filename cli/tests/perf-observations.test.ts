@@ -194,11 +194,13 @@ test("QPS zero observes all registered observations without Kubernetes, identity
   const directory=mkdtempSync(join(tmpdir(),"doctor-natural-perf-"));
   let queries=0;
   let collectorAvailable = true;
+  let baselineReads = 0;
   const yaml = "# original formatting\nglobal: {scrape_interval: 1m}\nscrape_configs: [{job_name: chat-pool, scrape_interval: 15s}]\n";
   let targetsAvailable = true;
   const states: (string | null)[] = [];
   const targets = JSON.stringify({status:"success",data:{activeTargets:[
     {labels:{service:"chat", namespace:"production"}, scrapePool:"chat-pool", scrapeUrl:"http://private", health:"up"},
+    {labels:{service:"worker", namespace:"production"}, scrapeInterval:"1m", scrapePool:"worker-pool", scrapeUrl:"http://worker", health:"up"},
     {labels:{service:"chat", namespace:"elsewhere"}, scrapeInterval:"5m", scrapeUrl:"http://unrelated"},
   ]}}, null, 2);
 
@@ -214,6 +216,10 @@ test("QPS zero observes all registered observations without Kubernetes, identity
     }
     if (url.pathname === "/api/v1/query_range") return Response.json({status:"success", data:{resultType:"matrix",
       result:[{metric:{}, values:[[Number(url.searchParams.get("start")), "7"]]}]}});
+    if (url.searchParams.get("query")?.startsWith("count_values(")) {
+      baselineReads++;
+      return Response.json({status:"success",data:{resultType:"vector",result:[{metric:{samples:"1"},value:[0,"2"]}]}});
+    }
     expect(url.pathname).toBe("/api/v1/query");queries++;
     return Response.json({status:"success",data:{resultType:"vector",result:[{metric:{},value:[Number(url.searchParams.get("time")),"7"]}]}});
   }});
@@ -235,10 +241,21 @@ test("QPS zero observes all registered observations without Kubernetes, identity
       recommendedHoldSeconds:60, groups:[{pool:"chat-pool", intervalSeconds:15, intervalSource:"config"}]});
     const saved = readFileSync(join(result.output!.outputDir, "perf.json"), "utf8");
     expect(JSON.parse(saved).scrape).toEqual(snapshot);
+    expect(snapshot?.services?.find(s => s.service === "other")?.groups).toMatchObject([{pool:"worker-pool",intervalSeconds:60}]);
+    const baseline = JSON.parse(saved).metricBaseline;
+    expect(baselineReads).toBe(1);
+    expect(baseline.inputs.map((input: {operation:string}) => input.operation).sort()).toEqual([operation.id(),other.id()].sort());
+    expect(Object.values(baseline.samples)).toEqual([{series:2,minSamples:1,maxSamples:1}]);
     expect(saved).not.toContain("http://private");
     const offlineContext = new CommandContext({});
     const offline = await perfCommand.run(offlineContext, {from:result.output!.outputDir});
     expect(offline.output!.scrape).toEqual(snapshot);
+    expect(offline.output!.metricBaseline).toEqual(baseline);
+    expect(baselineReads).toBe(1);
+    const quality = readFileSync(writePerfReport(offline.output!), "utf8");
+    expect(quality).toContain(">指标质量</button>");
+    expect(quality).toContain("worker-pool");
+    expect(quality).toContain("部分时序不足两个样本");
     expect(readFileSync(writePerfReport(offline.output!), "utf8")).toContain("hold 0.03s 短于 4 个抓取周期");
     const archive = join(directory, "perf.tar.gz");
     expect(await finalizeResult(offlineContext, perfCommand, offline, {format:"bundle",output:archive})).toBe(0);

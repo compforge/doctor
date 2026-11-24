@@ -1,11 +1,10 @@
 import type { ScrapeTarget, Service } from "@compforge/harness-common";
-import { parseDuration } from "@compforge/harness-toolbox/duration";
+import type { ServiceScrapeCoverage } from "@compforge/perf-harness";
 import { ToolboxError } from "@compforge/harness-toolbox/errors";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { parseServices } from "@compforge/harness-toolbox/kubernetes/service";
-import { MetricDBError, matchesScrapeTarget, vmSelectTenant, listVMAgentInstances, findVMAgentCollectors,
-  findPrometheusCollectors, type MetricCollector, type MetricDBClient } from "@compforge/harness-toolbox/metricdb";
+import { MetricDBError, matchServiceScrapeTargets, vmSelectTenant, listVMAgentInstances, findVMAgentCollectors,
+  findPrometheusCollectors, summarizeScrapeTargets, type ScrapeGroup, type MetricCollector, type MetricDBClient } from "@compforge/harness-toolbox/metricdb";
 import type { CommandContext } from "../command";
 import type { openMetricDB } from "../datasource/metricdb";
 
@@ -14,15 +13,6 @@ import { resolveCollectKubeconfig } from "../infra/k8s/context";
 import type { KubernetesCommandInput } from "../command/kubernetes-target";
 
 type ScrapeService = Pick<Service, "name" | "workloads">;
-
-interface ScrapeGroup {
-  pool?: string;
-  state: ScrapeTarget["state"];
-  health?: string;
-  intervalSeconds?: number;
-  intervalSource?: "target" | "config";
-  count: number;
-}
 
 /** Persist endpoint base URLs and matching job summaries. Raw evidence is archived separately. */
 export interface PerfScrape {
@@ -37,6 +27,7 @@ export interface PerfScrape {
   discoveryIssue?: string;
   vmagentInstances?: string[];
   groups: ScrapeGroup[];
+  services?: ServiceScrapeCoverage[];
   recommendedHoldSeconds?: number;
 }
 
@@ -50,11 +41,6 @@ export function writeScrapeFile(directory: string, name: "config.yaml" | "target
   const raw = join(directory, "raw", "scrape");
   mkdirSync(raw, {recursive: true});
   writeFileSync(join(raw, name), data, {mode: 0o600});
-}
-
-function seconds(interval?: string): number | undefined {
-  if (!interval) return;
-  try { return parseDuration(interval) / 1000; } catch { return undefined; }
 }
 
 function scrapeFailure(error: unknown, signal: AbortSignal): string {
@@ -79,23 +65,15 @@ async function clusterResources(context: CommandContext, namespace: string, opts
 }
 
 async function matchTargets(context: CommandContext, opts: KubernetesCommandInput, service: ScrapeService,
-  namespace: string, targets: ScrapeTarget[], signal: AbortSignal, scrape: PerfScrape) {
-  const refs = service.workloads.length ? service.workloads.flatMap(workload => workload.location.kind === "service"
-    ? [{name: workload.location.name, namespace: workload.namespace ?? namespace}] : []) : [{name:service.name, namespace}];
-  const podNamespaces = new Set(targets.filter(target => target.discoveredLabels?.__meta_kubernetes_pod_name
-    && !target.discoveredLabels.__meta_kubernetes_service_name && !target.labels?.service)
-    .map(target => target.discoveredLabels?.__meta_kubernetes_namespace ?? target.labels?.namespace));
-  const needed = new Map(refs.filter(ref => podNamespaces.has(ref.namespace)).map(ref => [ref.namespace + "/" + ref.name, ref]));
-  const selectors = await Promise.allSettled([...needed.values()].map(async ref => {
+  namespace: string, targets: ScrapeTarget[], signal: AbortSignal, scrape: Pick<PerfScrape, "discoveryIssue">) {
+  const {targets:matched, failures} = await matchServiceScrapeTargets(service, namespace, targets, async ref => {
     const access = await clusterResources(context, namespace, opts);
-    const item = await access.get({apiVersion:"v1", resource:"services", ...ref}, {signal});
-    return parseServices(JSON.stringify({items:[item]}), ref.namespace);
-  }));
+    return access.get({apiVersion:"v1", resource:"services", ...ref}, {signal});
+  });
   context.signal.throwIfAborted();
-  const failed = selectors.find(result => result.status === "rejected");
-  if (failed) scrape.discoveryIssue = `读取 Kubernetes Service selector 未完成（${scrapeFailure(failed.reason, signal)}）。`;
-  const services = selectors.flatMap(result => result.status === "fulfilled" ? result.value : []);
-  return targets.filter(target => matchesScrapeTarget(service, namespace, target, services));
+  if (failures.length) scrape.discoveryIssue = failures.map(({namespace,name,error}) =>
+    `读取 ${namespace}/${name} 的 Service selector 未完成（${scrapeFailure(error, signal)}）。`).join(" ");
+  return matched;
 }
 
 /** @rule Only a unique writer for this tenant with a matching active target supplies Perf evidence. */
@@ -127,12 +105,12 @@ async function probeDiscoveredCollector(reader: MetricDBClient, service: ScrapeS
   scrape.collectorUrl = evidenceEndpoint(url);
   if (raw) { raw.targets = body; delete raw.configYaml; }
   const [configs] = await Promise.allSettled([collector.getScrapeConfig(signal, raw && (yaml => { raw.configYaml = yaml; }))]);
-  return {configs, matched};
+  return {configs, active, matched};
 }
 
 /** @spec Only active targets matched to this Service contribute to its four-interval hold recommendation. */
 export async function probePerfScrape(context: CommandContext, service: ScrapeService, namespace: string,
-  client: ReturnType<typeof openMetricDB>, raw?: RawScrape, opts: KubernetesCommandInput = {}): Promise<PerfScrape | undefined> {
+  client: ReturnType<typeof openMetricDB>, raw?: RawScrape, opts: KubernetesCommandInput = {}, services: readonly ScrapeService[] = []): Promise<PerfScrape | undefined> {
   const scrape: PerfScrape = {service: service.name, namespace, endpoint: "metricdb", groups: []};
   const signal = AbortSignal.any([context.signal, AbortSignal.timeout(5000)]);
   let reader;
@@ -153,9 +131,7 @@ export async function probePerfScrape(context: CommandContext, service: ScrapeSe
     // @why state=any includes dropped targets and can return tens of MiB. Archive the active probe itself.
     reader.listScrapeTargets({state: "active"}, signal, raw && (body => { raw.targets = body; })),
   ]);
-  if (targets.status === "fulfilled") {
-    targets = {status:"fulfilled", value:await matchTargets(context, opts, service, namespace, targets.value, signal, scrape)};
-  }
+  let matched: ScrapeTarget[] | undefined;
   // A reachable targets API or an explicit collector already determines where discovery runs.
   if (reader.scrapeEndpoint === "metricdb" && targets.status === "rejected" && !signal.aborted
     && targets.reason instanceof MetricDBError && [400,404,405,501].includes(Number(targets.reason.code))
@@ -164,7 +140,8 @@ export async function probePerfScrape(context: CommandContext, service: ScrapeSe
       const discovered = await probeDiscoveredCollector(reader, service, namespace, context, opts, signal, scrape, raw);
       if (discovered) {
         configs = discovered.configs;
-        targets = {status:"fulfilled", value:discovered.matched};
+        targets = {status:"fulfilled", value:discovered.active};
+        matched = discovered.matched;
       }
     } catch (error) {
       context.signal.throwIfAborted();
@@ -183,21 +160,20 @@ export async function probePerfScrape(context: CommandContext, service: ScrapeSe
     scrape.targetsError = scrapeFailure(targets.reason, signal);
     return scrape;
   }
-  const jobs = new Map((configs.status === "fulfilled" ? configs.value : []).map(job => [job.jobName, job]));
-  const groups = new Map<string, ScrapeGroup>();
-  for (const target of targets.value) {
-    const pool = target.scrapePool;
-    const targetInterval = seconds(target.scrapeInterval);
-    const intervalSeconds = targetInterval ?? (pool ? seconds(jobs.get(pool)?.scrapeInterval) : undefined);
-    const group: ScrapeGroup = { pool, state: target.state, health: target.health, intervalSeconds,
-      intervalSource: targetInterval ? "target" : intervalSeconds ? "config" : undefined, count: 1 };
-    const key = JSON.stringify(group);
-    const existing = groups.get(key);
-    if (existing) existing.count++;
-    else groups.set(key, group);
-    if (intervalSeconds) scrape.recommendedHoldSeconds = Math.max(scrape.recommendedHoldSeconds ?? 0, Math.ceil(4 * intervalSeconds));
+  const active = targets.value;
+  const jobs = configs.status === "fulfilled" ? configs.value : [];
+  matched ??= await matchTargets(context, opts, service, namespace, active, signal, scrape);
+  scrape.groups = summarizeScrapeTargets(matched, jobs);
+  for (const group of scrape.groups) {
+    if (group.intervalSeconds) scrape.recommendedHoldSeconds = Math.max(scrape.recommendedHoldSeconds ?? 0, Math.ceil(4 * group.intervalSeconds));
   }
-  scrape.groups = [...groups.values()];
+  const others = services.filter(other => other.name !== service.name);
+  scrape.services = [{service:service.name, groups:scrape.groups, issue:scrape.discoveryIssue},
+    ...await Promise.all(others.map(async other => {
+      const diagnostic: Pick<PerfScrape,"discoveryIssue"> = {};
+      const found = await matchTargets(context, opts, other, namespace, active, signal, diagnostic);
+      return {service:other.name, groups:summarizeScrapeTargets(found, jobs), issue:diagnostic.discoveryIssue};
+    }))];
   return scrape;
 }
 
