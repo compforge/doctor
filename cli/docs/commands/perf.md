@@ -111,9 +111,11 @@ Prometheus/VM。按 `type: metricdb` 与 `kind` 选择目标的 `observes` 声�
 
 在线 perf 选定 Service 后并行读取采集器的 config 和 active targets（`state=active`）API，共用 5 秒探测时限。默认使用查询端点；当查询走 VM 的 vmselect 时，可用 `metricdb.collector.url` 指向实际采集器，并按需单独配置其 `username/password`。省略 collector 时，两个 API 共用查询端点及其认证。用 `--prometheus` 切换至其他地址时，探测使用该地址。
 
-未显式配置 collector 时，如果租户级 vmselect 的 targets API 返回不支持该操作的状态，Doctor 在同一探测时限内用当前 kubeconfig 读取 VM Operator Service 和 VMAgent。只有唯一候选的 remoteWrite 指向同一 VMCluster、同一租户且 active targets 匹配当前 Service 时才采用。多个候选、权限不足或目标不匹配时保留诊断提示并继续 perf。vmagent 自监控指标的 instance 只作为线索。显式 collector 适用于 Prometheus 采集、代理、NodePort 和需要单独认证的部署。
+未显式配置 collector 时，如果租户级 vmselect 的 targets API 返回不支持该操作的状态，Doctor 在同一探测时限内先查 VM Operator 管理的 VMAgent。如果没有候选，再查 vmselect 所在 namespace 里的 Prometheus server Service。Toolbox 用 VMCluster owner 或 vmstorage 节点集合核对 vmselect 与 vminsert，并从 Prometheus 当前加载的配置确认 remote_write 写入该集群和租户。每条路径都要求候选唯一且其 active targets 匹配当前业务 Service。对仅有 Pod 发现标签的 target，Doctor 读取对应 Kubernetes Service 的完整 selector 来匹配。多个候选、权限不足或目标不匹配时保留诊断提示并继续 perf。vmagent 自监控指标的 instance 只作为线索。显式 collector 适用于代理、NodePort、跨 namespace 的 Prometheus 和需要单独认证的部署。
 
 Doctor 按 namespace 及 Service 或声明的 Workload 匹配 target，优先使用 active target 报告的间隔，缺少时按 scrapePool 查对应 job 的配置。显式 `--hold` 始终优先。探测失败时继续运行，查不到间隔时沿用 60 秒默认值。匹配结果、间隔来源、健康状态和 API 错误写入 `perf.json` 的 `scrape`，离线 HTML 可查看。
+
+Evidence Bundle 的 `perf.json` 在 `scrape.metricdbUrl` 记录本轮选定的指标查询地址，在 `scrape.collectorUrl` 记录读取 config 和 targets 的采集器地址。后者来自显式配置、通过验证的自动发现，或直接复用查询端点。API 返回错误时仍可用地址与错误字段一起定位问题。两个字段均为 HTTP(S) base URL，凭据、query string 和 fragment 不写入这两个字段。
 
 Evidence Bundle 的 `raw/scrape/config.yaml` 保存采集器返回的原始 YAML，`raw/scrape/targets.json` 保存启动探测时 `state=active` 的原始响应（上限 4 MiB），含所选 Service 以外的 active target、发现标签和 `scrapeUrl`。两个接口独立留存。发送压测包前请检查配置中的凭据、内部地址及标签。
 

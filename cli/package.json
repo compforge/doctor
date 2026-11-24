@@ -33,7 +33,7 @@
     "@compforge/doctor-agent": "workspace:*",
     "@compforge/doctor-plugin": "workspace:*",
     "@compforge/harness-common": "0.10.2",
-    "@compforge/harness-toolbox": "0.14.8",
+    "@compforge/harness-toolbox": "0.14.10",
     "@compforge/perf-harness": "0.15.2",
     "@compforge/spec-case": "0.0.8",
     "csv-parse": "^6.1.0",
