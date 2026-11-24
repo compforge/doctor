@@ -238,6 +238,7 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
       run = await new Engine({name:`doctor-${target.service.name}-perf`, service, graph:graph.toJSON(),
         entryIds, ...progress.observe(adapter), caseSet:mix.caseSet,
         caseMix:mix.caseMix, loads, signal:context.signal, stopSignal:progress.stop.signal,
+        onErrorRateStop: (snapshot, inflight) => progress.errorRateStopped(snapshot, inflight),
         onArmStart: () => {
           writeOutput(`[perf] 开始观测：注入 QPS=${config.qps}，${config.qps ? `max_inflight=${config.maxInflight}，` : ""}hold=${config.holdSeconds}s\n`, process.stderr);
           writeOutput("[perf] Ctrl+C 结束本轮观测并生成报告。\n", process.stderr);

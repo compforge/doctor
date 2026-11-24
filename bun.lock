@@ -16,7 +16,7 @@
         "@compforge/doctor-plugin": "workspace:*",
         "@compforge/harness-common": "0.10.2",
         "@compforge/harness-toolbox": "0.14.11",
-        "@compforge/perf-harness": "0.15.3",
+        "@compforge/perf-harness": "0.15.4",
         "@compforge/spec-case": "0.0.8",
         "@compforge/trace-harness": "0.3.2",
         "@earendil-works/pi-agent-core": "0.87.1",
@@ -166,7 +166,7 @@
 
     "@compforge/harness-toolbox": ["@compforge/harness-toolbox@0.14.11", "", { "dependencies": { "@aws-sdk/client-s3": "3.1133.0", "@aws-sdk/s3-request-presigner": "3.1133.0", "@compforge/harness-common": "^0.10.2", "@kubernetes/client-node": "1.4.0", "@opensearch-project/opensearch": "3.6.0", "@redis/client": "6.1.0", "@smithy/core": "3.34.1", "@smithy/node-http-handler": "4.12.1", "js-yaml": "4.3.2", "mysql2": "3.23.1", "node-fetch": "2.7.0", "race-signal": "2.0.2", "ufo": "1.6.4", "ws": "8.21.3" } }, "sha512-Z57phoYCQRFbrvLfpWHbfCwlQUS+Ui1PxXnAPvvNh0aEcTqvRMri6pPRWqvmX7C91X5JhZIe3VTZZMaiVx00rQ=="],
 
-    "@compforge/perf-harness": ["@compforge/perf-harness@0.15.3", "", { "dependencies": { "@compforge/harness-common": "^0.10.0", "@compforge/harness-toolbox": "^0.14.11", "@compforge/spec-case": "^0.0.4" } }, "sha512-jL17nZHHGhS+BnbflcNDQgvzWQGjZzX87pnAxprFUIXLOXxmuL0LYxRGNUeo5MUuKPYzeub/w739a+RQPlC8GA=="],
+    "@compforge/perf-harness": ["@compforge/perf-harness@0.15.4", "", { "dependencies": { "@compforge/harness-common": "^0.10.0", "@compforge/harness-toolbox": "^0.14.11", "@compforge/spec-case": "^0.0.4" } }, "sha512-P5ecI1dxMnap4vkRHoXP5VdZ07YtysbIjrFmMXveq1ks7ozpf83UMVa8oQHTGOSmmsEY+m38oAVRWM6kELiuIw=="],
 
     "@compforge/spec-case": ["@compforge/spec-case@0.0.8", "", { "dependencies": { "typescript": ">=6.0.3 <7", "yaml": "^2.8.1" }, "bin": { "specgen": "dist/src/cli.js" } }, "sha512-vgk8Sp7I/bMnO6ufTlvjgogfmIWmn7PE9Bctr+vwL9sgya2ZGCnBiBT4Bev4WBZRFuEIPzaqM+K3U67COVPyfg=="],
 

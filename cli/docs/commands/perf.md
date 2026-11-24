@@ -43,7 +43,8 @@ doctor perf --from ./saved-perf --format html
 QPS=0 只执行 hold，不进行 setup/warmup/cooldown/cleanup，不初始化业务 runner、请求身份或业务访问。
 正 QPS 按 setup → warmup → hold → cooldown → cleanup 执行；多 Case 等权随机抽取。
 `--ramp` 控制 warmup，`--graceful-stop` 限制等待在途请求的时间，
-`--abort-error-rate` 和 `--breaker-min-n` 控制注入请求的错误率熔断。
+`--abort-error-rate` 和 `--breaker-min-n` 控制注入请求的错误率熔断。Perf Harness 按已完成请求的业务判定累计失败数。
+达到最少样本数且错误率达到阈值时，Doctor 立即在 stderr 打印触发快照和在途请求数，随后等待排空并生成报告。
 
 观测开始后按 Ctrl+C 正常结束本轮：封闭实际观测窗口，正 QPS 停止发出新请求，在途请求按
 `--graceful-stop` 预算收尾，随后采集指标并生成报告。收尾期间再次 Ctrl+C 只提示进度，不取消请求或报告。
@@ -67,7 +68,7 @@ QPS=0 只执行 hold，不进行 setup/warmup/cooldown/cleanup，不初始化业
 一份报告对应本次运行的设定 QPS。各视图共用同一份运行证据。
 
 - **Overview（概览）** 默认打开，展示执行状态、流量与窗口汇总、维度分组和指标覆盖缺口。
-- **指标质量** 按 Service 展示 active targets 的 job、健康状态、抓取间隔，以及 Operation 观测表达式在压测前和本轮的证据。压测前按计划 hold 读取独立 selector 和采用 `[$window]` 的原始输入 selector，统计匹配时序数和每条时序的样本范围，写入 `perf.json.metricBaseline`。查询超时或无法识别输入时保留未知。运行后按实际窗口展示空结果、直方图无事件、bucket 校验失败和量程溢出。运行前的数据不会用来断言本轮缺失的原因。
+- **指标质量** 按 Service 展示 active targets 的 job、健康状态、抓取间隔，以及 Operation 观测表达式在压测前和本轮的证据。压测前按计划 hold 读取独立 selector 和采用 `[$window]` 的原始输入 selector，统计匹配时序数和每条时序的样本范围，写入 `perf.json.metricBaseline`。终端按 Operation 汇总基线缺口。错误率采用零值回退且分母有样本时，空分子不会计入缺口。空的必需输入只说明基线窗口没有匹配时序。查询超时或无法识别输入时保留未知。运行后按实际窗口展示空结果、直方图无事件、bucket 校验失败和量程溢出。运行前的数据不会用来断言本轮缺失的原因。
 - **Metrics（指标）** 按请求 RED 和自定义指标展示时间序列。加压时，每张图的右轴叠加同一档位全部 Case 的在途请求数 `inflight`。完成吞吐按完成时刻统计。Operation 的服务端 QPS 包含其他匹配流量，纯观测时仍可有值。
 - **Resources（资源）** 按 Service 展示 CPU 和内存的 usage、request、limit，加压时叠加相同的 `inflight` 曲线。可从左侧选择 Service，查看每项查询的样本或缺口。
 - **Callgraph（调用图）** 从所选 Case 的入口 Operation 或显式选择的 Operation 出发，沿 `calls` 和 `mayCalls` 展开。用各节点在选定窗口的 RED 汇总值（请求速率、错误率、延迟）判断哪一段值得进一步排查。默认显示可达子图，可切换全图；共享节点只展示一次。

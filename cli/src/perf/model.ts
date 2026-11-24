@@ -1,6 +1,7 @@
 import type { PerfScrape } from "./scrape";
 import type { FacetSpec } from "@compforge/spec-case/model";
-import type { MetricQualityBaseline, Run } from "@compforge/perf-harness";
+import type { Run } from "@compforge/perf-harness";
+import type { MetricQualityBaseline } from "./quality";
 
 export interface PerfCliOpts {
 

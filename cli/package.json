@@ -34,7 +34,7 @@
     "@compforge/doctor-plugin": "workspace:*",
     "@compforge/harness-common": "0.10.2",
     "@compforge/harness-toolbox": "0.14.11",
-    "@compforge/perf-harness": "0.15.3",
+    "@compforge/perf-harness": "0.15.4",
     "@compforge/spec-case": "0.0.8",
     "csv-parse": "^6.1.0",
     "@compforge/trace-harness": "0.3.2",
