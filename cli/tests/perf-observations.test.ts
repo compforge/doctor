@@ -137,7 +137,7 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     expect(perfMetricsComplete(mixedRun)).toBe(true);
     expect(readFileSync(writePerfReport({ run: mixedRun, outputDir: directory, ...partial }), "utf8")).toContain("指标覆盖明细");
     response = "missing";
-    const source = await (await openMetricDB(context))?.connectQuery(context.signal);
+    const source = await (await openMetricDB(context))?.reader.connectQuery(context.signal);
     if (!source) throw new Error("fixture Prometheus source missing");
     await collectPerfMetrics(run, directory, source, context.signal);
     expect(perfMetricsComplete(run)).toBe(false);
@@ -231,7 +231,8 @@ test("QPS zero observes all registered observations without Kubernetes, identity
     expect(queries).toBeGreaterThanOrEqual(4);
     expect(states).toEqual(["active"]);
     const snapshot = result.output!.scrape;
-    expect(snapshot).toMatchObject({recommendedHoldSeconds:60, groups:[{pool:"chat-pool", intervalSeconds:15, intervalSource:"config"}]});
+    expect(snapshot).toMatchObject({metricdbUrl:server.url.origin, collectorUrl:server.url.origin,
+      recommendedHoldSeconds:60, groups:[{pool:"chat-pool", intervalSeconds:15, intervalSource:"config"}]});
     const saved = readFileSync(join(result.output!.outputDir, "perf.json"), "utf8");
     expect(JSON.parse(saved).scrape).toEqual(snapshot);
     expect(saved).not.toContain("http://private");
@@ -242,6 +243,10 @@ test("QPS zero observes all registered observations without Kubernetes, identity
     const archive = join(directory, "perf.tar.gz");
     expect(await finalizeResult(offlineContext, perfCommand, offline, {format:"bundle",output:archive})).toBe(0);
     const entries = Bun.spawnSync(["tar", "-tzf", archive]).stdout.toString().split("\n");
+    const metadata = entries.find(name => name.endsWith("/perf.json"));
+    expect(metadata).toBeDefined();
+    const archived = JSON.parse(Bun.spawnSync(["tar", "-xOzf", archive, metadata!]).stdout.toString());
+    expect(archived.scrape).toMatchObject({metricdbUrl:server.url.origin, collectorUrl:server.url.origin});
     for (const [file, expected] of [["config.yaml", yaml], ["targets.json", targets]]) {
       const entry = entries.find(name => name.endsWith("/raw/scrape/" + file));
       expect(entry).toBeDefined();

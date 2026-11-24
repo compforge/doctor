@@ -49,8 +49,8 @@ export async function preparePerfMetrics(operations: readonly Operation[], conte
     return prepared;
   }
   try {
-    const reader = await (typeof source === "string" || source === undefined ? openMetricDB(context, source) : source);
-    prepared.source = await reader?.connectQuery(context.signal);
+    const connection = await (typeof source === "string" || source === undefined ? openMetricDB(context, source) : source);
+    prepared.source = await connection?.reader.connectQuery(context.signal);
     if (!prepared.source) {
       missing("已声明观测指标，但未配置 metricdb（Prometheus/VM）；本轮仅保留运行窗口与已有请求事实");
     } else {
