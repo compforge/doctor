@@ -51,6 +51,60 @@ test("Ctrl+C stops new requests, drains inflight calls and keeps repeated interr
   expect(context.signal.reason).toBe(cancelled);
 });
 
+test("prints the breaker snapshot before waiting for the remaining request", async () => {
+  const cancellation = new AbortController();
+  const context = new CommandContext({}, undefined, { signal: cancellation.signal });
+  const messages: string[] = [];
+  const progress = new PerfProgress(text => messages.push(text));
+  let bothDispatched!: () => void;
+  const both = new Promise<void>(resolve => { bothDispatched = resolve; });
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  let notified!: () => void;
+  const stopped = new Promise<void>(resolve => { notified = resolve; });
+  let calls = 0;
+  const result = new Engine({
+    service, signal:context.signal, stopSignal:progress.stop.signal,
+    loads:[{request_rate:Infinity,max_inflight:2,hold_s:60,warmup:{step_s:0},
+      abort_on_error_rate:0.1,breaker_min_n:1,cooldown_timeout_s:2}],
+    onArmStart:() => progress.start(context),
+    onErrorRateStop(snapshot, inflight) {
+      progress.errorRateStopped(snapshot, inflight);
+      notified();
+    },
+    ...progress.observe({runner:{name:"fixture",async fire() {
+      if (++calls === 1) {
+        await both;
+        return {status:200, duration_ms:1, meta:{error_kind:"101429"}};
+      }
+      bothDispatched();
+      await pending;
+      return {status:200, duration_ms:1};
+    }},judge:outcome => ({code:outcome.meta?.error_kind === "101429" ? "101429" : "success"})}),
+  }).run();
+  try {
+    await Promise.race([stopped, result.then(() => { throw new Error("Run ended before notifying the breaker"); })]);
+    expect(messages.join("")).toContain("失败 1/1，错误率 100.00%，阈值 10.00%");
+    expect(messages.join("")).toContain("停止新增请求，等待 1 个在途请求收尾");
+    progress.print();
+    expect(messages.at(-1)).toContain("收尾中");
+    release();
+    const run = await result;
+    expect(calls).toBe(2);
+    expect(run.executions[0]!.stop).toMatchObject({reason:"error_rate", interrupted:0});
+    expect(formatPerfSummary(run)).toContain("结束原因=错误率熔断");
+    expect(formatPerfSummary(run)).toContain("熔断触发时 失败 1/1");
+    expect(formatPerfSummary(run)).toContain("（计划 60s）");
+  } finally {
+    bothDispatched();
+    release();
+    cancellation.abort();
+    await result.catch(() => {});
+    progress.dispose();
+    await context.disposeClients();
+  }
+});
+
 test("external cancellation still aborts perf requests even with graceful interrupt handling", async () => {
   const controller = new AbortController();
   const context = new CommandContext({}, undefined, { signal: controller.signal });

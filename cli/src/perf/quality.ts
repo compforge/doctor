@@ -1,7 +1,23 @@
-import { inspectMetricSamples, observationSampleInputs } from "@compforge/harness-toolbox/metricdb";
-import type { MetricQualityBaseline } from "@compforge/perf-harness";
+import { counterIncreaseFunction, inspectMetricSamples, observationSampleInputs } from "@compforge/harness-toolbox/metricdb";
+import type { MetricQualityBaseline as HarnessMetricBaseline } from "@compforge/perf-harness";
 import type { PreparedPerfMetrics } from "./observations";
 import { diagnosticMessage } from "../command/diagnostic";
+
+type MetricInput = HarnessMetricBaseline["inputs"][number] & {
+  zeroFallbackNumerator?: string;
+};
+
+export type MetricQualityBaseline = Omit<HarnessMetricBaseline, "inputs"> & { inputs: MetricInput[] };
+
+/** @rule An empty input is optional only for the proven zero-fallback formula and its own denominator. */
+function zeroFallbackNumerator(promql: string, selectors: readonly string[], increase: string): string | undefined {
+  const [numerator, denominator] = selectors;
+  if (!numerator || !denominator || selectors.length !== 2) return;
+  const aggregate = (selector: string) => `sum(${increase}(${selector}[$window]))`;
+  const completed = aggregate(denominator);
+  const withFallback = `(${aggregate(numerator)} or (0 * ${completed})) / (${completed} > 0)`;
+  if (promql.trim() === withFallback) return numerator;
+}
 
 /** @rule Evaluate raw inputs at one pre-load timestamp. A failed or budget-limited read stays unknown. */
 export async function inspectMetricBaseline(prepared: PreparedPerfMetrics, windowSeconds: number,
@@ -14,7 +30,12 @@ export async function inspectMetricBaseline(prepared: PreparedPerfMetrics, windo
     const summaries = new Map(probe.summaries.map(summary => [summary.name, summary]));
     for (const [metric, key] of Object.entries(probe.metrics)) {
       const summary = summaries.get(key);
-      if (summary) inputs.push({service:probe.service, operation:probe.target, metric, ...observationSampleInputs(summary.promql)});
+      if (!summary) continue;
+      const sampleInputs = observationSampleInputs(summary.promql);
+      const fallback = metric === "error_rate"
+        ? zeroFallbackNumerator(summary.promql, sampleInputs.selectors, counterIncreaseFunction[source.kind])
+        : undefined;
+      inputs.push({service:probe.service, operation:probe.target, metric, ...sampleInputs, zeroFallbackNumerator:fallback});
     }
   }
   if (!inputs.length) return;
@@ -37,24 +58,35 @@ export async function inspectMetricBaseline(prepared: PreparedPerfMetrics, windo
   return baseline;
 }
 
-export function metricBaselineAdvice(metricBaseline: MetricQualityBaseline): string[] {
-  const advice: string[] = [];
-  const byService = new Map<string, Map<string,boolean>>();
-  for (const input of metricBaseline.inputs) {
-    const selectors = byService.get(input.service) ?? new Map<string,boolean>();
-    for (const selector of input.selectors) selectors.set(selector, input.windowed || !!selectors.get(selector));
-    byService.set(input.service, selectors);
+export function metricBaselineAdvice(baseline: MetricQualityBaseline): string[] {
+  const byService = new Map<string, { empty: Set<string>; sparse: Set<string>; unknown: Set<string> }>();
+  for (const input of baseline.inputs) {
+    const gaps = byService.get(input.service) ?? { empty:new Set<string>(), sparse:new Set<string>(), unknown:new Set<string>() };
+    byService.set(input.service, gaps);
+    const operation = input.operation.slice(input.operation.lastIndexOf("/") + 1);
+    for (const selector of input.selectors) {
+      const samples = baseline.samples[selector];
+      if (!samples || "error" in samples) {
+        gaps.unknown.add(operation);
+      } else if (samples.series === 0) {
+        if (selector === input.zeroFallbackNumerator) continue;
+        gaps.empty.add(operation);
+      } else if (input.windowed && (samples.minSamples ?? 0) < 2) {
+        gaps.sparse.add(operation);
+      }
+    }
   }
-  for (const [serviceName, selectors] of byService) {
-    const samples = [...selectors.keys()].map(selector => metricBaseline.samples[selector]);
-    const sparse = [...selectors].filter(([selector, windowed]) => {
-      const result = metricBaseline.samples[selector];
-      return windowed && result && "series" in result && result.series > 0 && (result.minSamples ?? 0) < 2;
-    }).length;
-    const empty = samples.filter(result => result && "series" in result && result.series === 0).length;
-    const unknown = samples.filter(result => !result || "error" in result).length;
-    if (sparse || empty || unknown) advice.push(
-      `${serviceName} 指标基线：${sparse} 个 selector 样本不足，${empty} 个未匹配时序，${unknown} 个未能核对。详见「指标质量」。`);
+
+  const advice: string[] = [];
+  for (const [service, {empty, sparse, unknown}] of byService) {
+    const details = [
+      [empty, "无匹配的必需时序"],
+      [sparse, "样本不足"],
+      [unknown, "未能核对"],
+    ] as const;
+    const warnings = details.flatMap(([operations, reason]) =>
+      operations.size ? [`${operations.size} 个 Operation ${reason}（${[...operations].join("、")}）`] : []);
+    if (warnings.length) advice.push(`${service} 指标基线（回看 ${baseline.windowSeconds}s）：${warnings.join("；")}。详见「指标质量」。`);
   }
   return advice;
 }
