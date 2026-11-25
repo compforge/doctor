@@ -1,4 +1,4 @@
-import { clientKey } from "@compforge/harness-common";
+import { clientKey, type Identity } from "@compforge/harness-common";
 import type { ServiceS3DataSource } from "@compforge/doctor-plugin";
 import type { Executor, ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
 import { serviceIdentity } from "@compforge/harness-toolbox/kubernetes/service";
@@ -20,6 +20,7 @@ export interface S3SourceConfig {
 export interface ResolvedS3Configuration {
   target?: S3Target;
   client?: S3Client;
+  dataSource?: Identity;
   bucket?: string;
   bucketPrefix?: string;
   source: string;
@@ -32,7 +33,7 @@ export async function resolveS3Configuration(command: CommandContext, config: S3
   const capability = config.capability;
   if (capability.source) {
     const client = await borrowServiceClient(command, config.collect, executor, config.service, capability, capability.source);
-    return { target: client.target, client: client.access, bucket: client.target.bucket,
+    return { target: client.target, client: client.access, dataSource: client.dataSource, bucket: client.target.bucket,
       bucketPrefix: client.target.bucketPrefix, source: "plugin", captures: [] };
   }
   const names = capability.environment;
@@ -81,13 +82,14 @@ export async function prepareS3Access(command: CommandContext, collect: Kubernet
     key = clientKey("direct", {});
     transport = await command.clients.get({ clientKey: key, createClient: () => new DirectTransport() });
   }
-  const client = await command.clients.get(new S3DataSource(target, {
+  const dataSource = new S3DataSource(target, {
     concurrency: 4, connectTimeoutMs: 10_000, requestTimeoutMs: 10_000,
-  }, { key, transport }));
+  }, { key, transport });
+  const client = await command.clients.get(dataSource);
   const httpTarget = { endpoint: endpoint.toString(), ca: target.ca };
   const limits = { concurrency: 4, connectTimeoutMs: 10_000, requestTimeoutMs: 10_000, maxResponseBytes: 4 * 1024 * 1024 };
   // @rule Provider HTTP and S3 borrow the same route; endpoint remains protocol identity, never a local dial URL.
   const http = await command.clients.get({ clientKey: clientKey("s3-provider-http", { target: httpTarget, route: key, limits }),
     createClient: (_clients, signal) => new HttpClient(httpTarget, transport, limits, { signal }) });
-  return { client, http, transport, channel, endpoint: endpoint.toString() };
+  return { client, dataSource, http, transport, channel, endpoint: endpoint.toString() };
 }

@@ -7,7 +7,7 @@ import { KubectlExecutor } from "@compforge/harness-toolbox/kubernetes/executor"
 import { createDoctorProgram } from "../src/app/main";
 import { expect, spyOn, test } from "bun:test";
 import { crc32 } from "node:zlib";
-import { DirectTransport } from "@compforge/harness-toolbox/transport";
+import { DirectTransport, PortForwardTransport } from "@compforge/harness-toolbox/transport";
 import { HttpClient } from "@compforge/harness-toolbox/http";
 import { probeChunkLimit, S3Wire } from "../src/collect/s3/chunk";
 import { inspectS3 } from "../src/collect/s3/inspect";
@@ -68,7 +68,14 @@ test("bare inspect defers the bucket to service configuration", () => {
   expect(resolveS3Request({ action: "inspect" })).toMatchObject({ action: "inspect", bucket: undefined, timeoutMs: 90000 });
 });
 
-test("bare CLI discovers a contributed source in another namespace and bundles partial evidence on denied PUT", async () => {
+test.each([
+  ["one source", undefined, true],
+  ["equivalent sources", "same", true],
+  ["different default buckets", "bucket", false],
+  ["different default buckets with an explicit bucket", "override", true],
+  ["different credentials", "credentials", false],
+  ["the same short hostname in different namespaces", "namespace", false],
+] as const)("inspect discovery with %s", async (_description, variant, canInspect) => {
   const root = mkdtempSync(join(tmpdir(), "s3-inspect-cli-"));
   const previous = process.cwd(), exitCode = process.exitCode;
   const methods: string[] = [];
@@ -78,39 +85,64 @@ test("bare CLI discovers a contributed source in another namespace and bundles p
     if (new URL(url).searchParams.has("versioning")) return new Response("<VersioningConfiguration/>");
     return new Response(null, { headers: { "x-amz-bucket-region": "us-east-1" } });
   });
+  const forward = variant === "namespace" ? spyOn(PortForwardTransport.prototype, "connect").mockImplementation(async target => {
+    expect(target.host).toBe("storage");
+    return { host: "127.0.0.1", port: Number(new URL(fixture.target.endpoint).port) };
+  }) : undefined;
   const kube = spyOn(KubectlExecutor.prototype, "run").mockImplementation(async args => {
     let stdout: string;
     if (args.includes("view")) stdout = "test-context\nhttps://cluster.invalid";
-    else if (args.includes("services") && args.includes("-A")) stdout = "vke-system\n";
+    else if (args.includes("services") && args.includes("-A")) {
+      stdout = variant === "namespace" && args.includes("metadata.name=second")
+        ? "other-namespace\n" : "vke-system\n";
+    }
     else if (args.includes("version") || args.includes("--raw=/version")) stdout = "{}";
     else throw new Error("Unexpected Kubernetes call: " + args.join(" "));
     return { ok: true, stdout, stderr: "", durationMs: 1, command: args, exitCode: 0, timedOut: false };
   });
   try {
     process.chdir(root);
-    const plugin = { id: "fixture", version: "1.0.0", services: createServiceCatalog([{
-      name: "svc", workloads: [kubernetesServiceWorkload("actual-k8s-svc")],
+    const names = variant ? ["svc", "second"] : ["svc"];
+    const plugin = { id: "fixture", version: "1.0.0", services: createServiceCatalog(names.map(name => ({
+      name, workloads: [kubernetesServiceWorkload(name === "svc" ? "actual-k8s-svc" : name)],
       component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixture" } },
       dataSources: [{ kind: "s3", id: "files", backend: "s3-compatible", source: s3DataSource("local", async ctx => {
-        expect(ctx.target.namespace).toBe("vke-system");
-        return { ...fixture.target, bucket: "archive" };
+        const other = name === "second";
+        expect(ctx.target.namespace).toBe(variant === "namespace" && other ? "other-namespace" : "vke-system");
+        return {
+          ...fixture.target,
+          endpoint: variant === "namespace" ? "http://storage:9000" : fixture.target.endpoint,
+          bucket: other && (variant === "bucket" || variant === "override") ? "other-bucket" : "archive",
+          credentials: other && variant === "credentials"
+            ? { ...fixture.target.credentials, secretAccessKey: "other-secret" } : fixture.target.credentials,
+        };
       }) }],
-    }]) };
+    }))) };
     const program = createDoctorProgram({ plugin, commands: "s3", optionDefaults: { yes: true, config: "" } });
-    await program.parseAsync(["s3", "inspect"], { from: "user" });
-    expect(methods).toEqual(["HEAD", "GET", "PUT"]);
+    await program.parseAsync(["s3", "inspect", ...(variant === "override" ? ["s3://requested"] : [])], { from: "user" });
+    expect(methods).toEqual(canInspect ? ["HEAD", "GET", "PUT"] : []);
     const archive = join(root, "s3-inspect.tar.gz");
     const files = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" }).trim().split("\n");
     const read = (file: string) => execFileSync("tar", ["-xOzf", archive, file], { encoding: "utf8" });
     const summary = read(files.find(f => f.endsWith("summary.md"))!);
-    expect(summary).toContain("未测出");
-    expect(summary).toContain("AccessDenied");
     expect(summary).not.toContain("test-secret");
+    expect(summary).not.toContain("other-secret");
     const diagnosis = JSON.parse(read(files.find(f => f.endsWith("diagnosis.json"))!));
-    expect(diagnosis).toMatchObject({ status: "partial", target: { namespace: "vke-system", configuredBucket: "archive" } });
+    if (canInspect) {
+      expect(summary).toContain("未测出");
+      expect(summary).toContain("AccessDenied");
+      expect(diagnosis).toMatchObject({ status: "partial", target: { namespace: "vke-system", service: "svc", configuredBucket: "archive" },
+        request: { bucket: variant === "override" ? "requested" : "archive" } });
+    } else {
+      expect(diagnosis.status).toBe("failed");
+      expect(diagnosis.reason).toContain("候选");
+      expect(diagnosis.reason).toContain("/ svc /");
+      expect(diagnosis.reason).toContain("/ second /");
+    }
   } finally {
     process.chdir(previous); process.exitCode = exitCode;
-    kube.mockRestore(); await fixture.close(); rmSync(root, { recursive: true, force: true });
+    kube.mockRestore(); forward?.mockRestore();
+    await fixture.close(); rmSync(root, { recursive: true, force: true });
   }
 });
 

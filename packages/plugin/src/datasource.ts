@@ -6,7 +6,7 @@ import type { DatabaseTarget } from "./database";
 import type { PluginDataSource } from "./context";
 import type { CapabilityWithAccess } from "./kubernetes";
 import type { MysqlClient } from "@compforge/harness-toolbox/db/mysql";
-import type { Client } from "@compforge/harness-common";
+import type { Client, Identity } from "@compforge/harness-common";
 import type { S3Client, S3Target } from "@compforge/harness-toolbox/s3";
 import type { RedisClient, RedisDataSourceTarget, RedisAccessApi } from "@compforge/harness-toolbox/kv/redis";
 import type { OpenSearchReadApi } from "@compforge/harness-toolbox/vectordb/opensearch";
@@ -111,6 +111,8 @@ export type ServiceRedisDataSource = ServiceDataSourceBase & {
 export interface ServiceS3Client extends Client {
   readonly target: S3Target & { bucket: string; bucketPrefix?: string };
   readonly access: S3Client;
+  /** Identity of the resolved data source, independent of the Service contribution. */
+  readonly dataSource?: Identity;
 }
 
 export interface ServiceVdbClient extends Client {

@@ -42,10 +42,11 @@ export async function resolveS3Provider(context: CommandContext, input: S3Input,
   const resolved = await resolveS3Configuration(context, { collect, service, capability, target, optionalBucket: request.action === "inspect" }, executor);
   if (!resolved.target) throw new Error(resolved.reason ?? "未解析到 S3 目标");
   const access = await prepareS3Access(context, collect, resolved.target, resolved.client);
-  const endpoint = new URL(resolved.target.endpoint);
-  endpoint.username = ""; endpoint.password = ""; endpoint.search = ""; endpoint.hash = "";
   const configuration = resolved.target;
-  return { client: access.client, prepareWire: (bucket: string, signal: AbortSignal) =>
+  const endpoint = new URL(configuration.endpoint);
+  endpoint.username = ""; endpoint.password = ""; endpoint.search = ""; endpoint.hash = "";
+  const dataSource = resolved.dataSource ?? access.dataSource;
+  return { client: access.client, dataSource, prepareWire: (bucket: string, signal: AbortSignal) =>
     prepareWire(context, collect, executor, service, capability, configuration, access.client, access.transport, bucket, signal),
     identity: {
       service, dataSource: capability.id, description: capability.description,
