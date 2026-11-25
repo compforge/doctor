@@ -46,6 +46,8 @@
     "@opentui/keymap": "0.5.12",
     "@opentui/react": "0.5.12",
     "@redis/client": "6.1.0",
+    "@smithy/core": "3.34.1",
+    "@smithy/signature-v4": "5.6.12",
     "abort-controller": "3.0.0",
     "chat-tui": "github:compforge/chat-tui#e6b435e5f25d3d5424414843d606ca75eb09413b",
     "consola": "^3.4.2",

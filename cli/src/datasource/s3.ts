@@ -15,6 +15,7 @@ export interface S3SourceConfig {
   service: string;
   capability: ServiceS3DataSource;
   target?: PodTarget;
+  optionalBucket?: boolean;
 }
 export interface ResolvedS3Configuration {
   target?: S3Target;
@@ -37,7 +38,7 @@ export async function resolveS3Configuration(command: CommandContext, config: S3
   const names = capability.environment;
   if (!config.target) throw new Error("S3 DataSource 未提供 Workload 配置来源");
   const complete = (environment: Map<string, string>) => !!(
-    configuredValue(environment, names.endpoint) && configuredValue(environment, names.bucket)
+    configuredValue(environment, names.endpoint) && (config.optionalBucket || configuredValue(environment, names.bucket))
     && configuredValue(environment, names.accessKey) && configuredValue(environment, names.secretKey)
   );
   const runtime = await loadServiceRuntimeConfig(executor, config.target, complete);
@@ -50,7 +51,7 @@ export async function resolveS3Configuration(command: CommandContext, config: S3
   const style = names.addressStyle ? configuredValue(runtime.environment, names.addressStyle)?.toLowerCase() : undefined;
   return {
     source: runtime.source, captures: runtime.captures,
-    bucket: configuredValue(runtime.environment, names.bucket)!,
+    bucket: configuredValue(runtime.environment, names.bucket),
     bucketPrefix: names.bucketPrefix ? configuredValue(runtime.environment, names.bucketPrefix) : undefined,
     target: {
       endpoint: endpoint.toString(), region: configuredValue(runtime.environment, names.region) ?? "us-east-1",
@@ -88,5 +89,5 @@ export async function prepareS3Access(command: CommandContext, collect: Kubernet
   // @rule Provider HTTP and S3 borrow the same route; endpoint remains protocol identity, never a local dial URL.
   const http = await command.clients.get({ clientKey: clientKey("s3-provider-http", { target: httpTarget, route: key, limits }),
     createClient: (_clients, signal) => new HttpClient(httpTarget, transport, limits, { signal }) });
-  return { client, http, channel, endpoint: endpoint.toString() };
+  return { client, http, transport, channel, endpoint: endpoint.toString() };
 }
