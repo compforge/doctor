@@ -2,7 +2,7 @@ import { expect, spyOn, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { allLogWorkloads, createServiceCatalog, type CollectWindow, type Fact } from "@compforge/doctor-plugin";
+import { allRequestWorkloads, createServiceCatalog, type CollectWindow, type Fact } from "@compforge/doctor-plugin";
 import { KubectlExecutor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { ClientNodePodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod/log";
 import { parsePods } from "@compforge/harness-toolbox/kubernetes/pod";
@@ -71,7 +71,7 @@ for (const variant of ["standalone", "composite", "invalid", "explicit", "trace-
   let inspectCalls = 0;
   const plugin = { id: "window-fixture", version: "1", services: createServiceCatalog([{ ...logService(),
     logs: { ...(variant !== "trace-only" ? { identityRelations: { biz_id: ["run_id"] } } : {}) },
-    extensions: [allLogWorkloads(), inspectExtension({ access: {}, accepts: ["biz_id"], expands: ["run_id"], provides: ["reference", "collect.window"],
+    extensions: [allRequestWorkloads(), inspectExtension({ access: {}, accepts: ["biz_id"], expands: ["run_id"], provides: ["reference", "collect.window"],
       inspect: async (_context, queries) => { inspectCalls++; return queries.map(({ identity: query }) => ({ identity: query, status: "collected" as const, result: {
         resolution: { inputId: query.value, resolvedAs: "run_id", identifiers: {} }, facts: [
           { factType: "relation", kind: "reference", schemaVersion: 1, from: query, to: identity },

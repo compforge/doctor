@@ -1,3 +1,4 @@
+import { resolveRequestWorkloads } from "../request-workloads";
 import { gapMessages } from "../evidence-gaps";
 import { inspectCollectionScope } from "./model";
 import { bindKubernetesEnvironment } from "../../infra/k8s/environment";
@@ -93,6 +94,18 @@ export async function runCollectInspect(
     return commandOutcome(130);
   }
   config = { ...config, services };
+  let requestGaps: readonly string[] = [];
+  if (opts.bizId) {
+    const scope = await resolveRequestWorkloads(commandContext, plugin.services, opts.bizId, executor, config.kube);
+    requestGaps = scope.gaps;
+    // An incomplete lookup cannot authorize a broad static fallback for a possible foreign owner.
+    if (requestGaps.length) {
+      services = services.filter(name => scope.owners.has(name) && scope.catalog.find(name)!.workloads.length);
+      if (!services.length) throw new Error(requestGaps.join("；"));
+      config = { ...config, services };
+    }
+    plugin = { ...plugin, services: scope.catalog };
+  }
   const selectedDefinitions = services.map((name) => plugin.services.find(name)!);
   const includeDeploymentConfig = await resolveInspectDeploymentSelection({ config });
   if (includeDeploymentConfig === undefined) {
@@ -141,12 +154,13 @@ export async function runCollectInspect(
     command: "doctor inspect",
     needs: [
       ...deploymentNeeds,
-      {
-        requirement: "preferred",
-        rule: { verb: "list", resource: "pods" },
+      ...(!opts.bizId || selectedDefinitions.some(service => service.workloads.some(workload =>
+        workload.location.kind !== "resource" || workload.location.resource_kind !== "Pod")) ? [{
+        requirement: "preferred" as const,
+        rule: { verb: "list" as const, resource: "pods" },
         purpose: "统计所选 Service 的 Pod、镜像与 Container 资源声明",
         fallback: "权限缺失时仍交付 Env 配置，Pod 运行态标记为缺失",
-      },
+      }] : []),
       ...(scope.event ? [{
         requirement: "preferred" as const,
         rule: { verb: "list", resource: "events" },
@@ -189,6 +203,9 @@ export async function runCollectInspect(
   const staging = join(stagingRoot, config.reportName);
   commandContext.artifacts.add({ command: "inspect", path: staging });
   const bundle = new EvidenceBundle(staging);
+  for (const [index, reason] of requestGaps.entries()) bundle.addStep({
+    id: `request-workloads-${index + 1}`, title: "请求 Workload 定位", risk: "observe", status: "failed", reason,
+  });
   const log = (line: string) => useLogger().info(`${line}`);
   let facts: Readonly<Partial<InspectFacts>> | undefined;
   let diagnosis: InspectDiagnosis | undefined;
@@ -213,6 +230,7 @@ export async function runCollectInspect(
     target: {
       namespace: config.namespace,
       services: config.services.join(","),
+      biz_id: opts.bizId,
     },
     inspectionFacts: facts ? {
       serviceTargets: facts.serviceTargets,

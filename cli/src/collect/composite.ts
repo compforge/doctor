@@ -67,11 +67,12 @@ export type CollectInput = CommandInput & Omit<CollectCliOpts, CommandHostOption
 
 export interface CollectDelegateResult {
   readonly kind: CollectKind;
+  readonly bizId?: string;
   readonly result: CommandResult<unknown>;
 }
 
 export interface CollectOutput { readonly steps: readonly CollectDelegateResult[]; }
-export type CollectDelegate = (kind: CollectKind) => Promise<CommandResult<unknown>>;
+export type CollectDelegate = (kind: CollectKind, bizId?: string) => Promise<CommandResult<unknown>>;
 
 interface CollectManifestInput {
   opts: CollectInput;
@@ -109,7 +110,7 @@ export function createCollectManifest(input: CollectManifestInput): Record<strin
     started_at: input.startedAt,
     finished_at: input.finishedAt,
     steps: input.results.map((result) => ({
-      id: result.kind,
+      id: result.kind, biz_id: result.bizId,
       title: COLLECT_LABELS[result.kind],
       status: result.result.status,
       reason: "reason" in result.result ? result.result.reason : undefined,
@@ -181,12 +182,16 @@ export function parseCollectOutputFormat(raw: string | undefined): CollectOutput
 export async function runCollectDelegates(
   kinds: readonly CollectKind[],
   delegate: CollectDelegate,
+  inspectIds: readonly string[] = [],
 ): Promise<CollectDelegateResult[]> {
   const results: CollectDelegateResult[] = [];
   for (const kind of kinds) {
-    const result = await delegate(kind);
-    results.push({ kind, result });
-    if (result.status === CommandStatus.Cancelled) break;
+    const ids = kind === "inspect" && inspectIds.length ? new Set(inspectIds) : [undefined];
+    for (const bizId of ids) {
+      const result = await delegate(kind, bizId);
+      results.push({ kind, ...(bizId && { bizId }), result });
+      if (result.status === CommandStatus.Cancelled) return results;
+    }
   }
   return results;
 }
@@ -207,10 +212,10 @@ function collectDelegate(input: CollectInput, context: CommandContext): CollectD
   const collectionStartedAt = new Date().toISOString();
   const common = { namespace: input.namespace };
   const time = { since: input.since, sinceTime: input.sinceTime, untilTime: input.untilTime };
-  return (kind) => {
+  return (kind, bizId) => {
     switch (kind) {
       case "inspect": return inspectCommand.run(context, createInspectInput({
-        ...common, ...time, services: inspectServiceNames(plugin),
+        ...common, ...time, bizId, services: inspectServiceNames(plugin),
         deploymentConfig: input.deploymentConfig, dependencies: input.dependencies,
       }));
       case "tenant": return tenantCommand.run(context, createTenantInput({
@@ -227,8 +232,7 @@ function collectDelegate(input: CollectInput, context: CommandContext): CollectD
         traceWindows: logWindows, dataWindows, collectionStartedAt, timePadding: input.timePadding,
         ...common, bizIds: input.bizIds,
         // Capability availability is broader than the Plugin's default collection scope.
-        services: plugin.services.services.filter(service => service.logs !== undefined)
-          .filter(service => service.extensions?.some(extension => extension.kind === "log.workloads")).map((service) => service.name),
+        automaticServices: true,
         since: input.since, sinceTime: input.sinceTime, untilTime: input.untilTime, itemConcurrency: input.itemConcurrency,
       });
     }
@@ -249,7 +253,7 @@ export function createCollectCommand(delegate?: CollectDelegate) {
       const source = result.artifacts.find(artifact => artifact.command === "collect");
       const staged = source ? JSON.parse(readFileSync(source.path, "utf8")) : {};
       const steps = (result.output?.steps ?? []).map((step, index) => ({
-        kind: step.kind, status: step.result.status, result: children[index],
+        kind: step.kind, biz_id: step.bizId, status: step.result.status, result: children[index],
       }));
       return {
         children, files: {
@@ -292,12 +296,12 @@ export function createCollectCommand(delegate?: CollectDelegate) {
     run: async (context, input) => {
       const startedAt = new Date().toISOString();
       const invoke = delegate ?? collectDelegate(input, context);
-      const results = await runCollectDelegates(input.kinds, async (kind) => {
+      const results = await runCollectDelegates(input.kinds, async (kind, bizId) => {
         context.signal.throwIfAborted();
-        const result = await invoke(kind);
+        const result = await invoke(kind, bizId);
         context.artifacts.add(result.artifacts);
         return result;
-      });
+      }, context.plugin.services.extensions("request.workloads").length ? input.bizIds : []);
       registerCollectManifest({
         opts: input, plugin: context.plugin, results, commandContext: context,
         startedAt, finishedAt: new Date().toISOString(),

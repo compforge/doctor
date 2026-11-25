@@ -114,7 +114,7 @@ function validateService(value: unknown, index: number): ServiceDefinition {
   if (service.configurationInspection !== undefined) throw new Error(`${service.name}.configurationInspection was removed; declare file dataSources`);
   if (service.logs !== undefined) {
     const logs = record(service.logs, `${service.name}.logs`);
-    if ("default" in logs) throw new Error(`${service.name}.logs.default was replaced by the log.workloads Extension`);
+    if ("default" in logs) throw new Error(`${service.name}.logs.default was replaced by the request.workloads Extension`);
   }
   if (service.detectors !== undefined) {
     for (const [detectorId, detector] of uniqueIdRecords(

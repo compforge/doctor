@@ -1,4 +1,4 @@
-import { allLogWorkloads } from "@compforge/doctor-plugin";
+import { allRequestWorkloads } from "@compforge/doctor-plugin";
 import { traceExtension } from "../../packages/plugin/tests/extension-fixture";
 import { captureSerializedDirectory, finalizeResult } from "./report-fixture";
 import { logService, podDiscoveryExecutor } from "./log-fixture";
@@ -23,7 +23,7 @@ const plugin: PluginDefinition = {
       component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "api",
       workloads: logService("api").workloads,
-      extensions: [allLogWorkloads()],
+      extensions: [allRequestWorkloads()],
       logs: {}
     },
     {
@@ -59,7 +59,7 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
         name: "api",
         workloads: logService("api").workloads,
         logs: {},
-        extensions: [allLogWorkloads(), traceExtension({
+        extensions: [allRequestWorkloads(), traceExtension({
           access: {}, endpoint: { host: "unused", port: 80 }, resolve: async () => {
             resolutions++;
             if (variant === "trace-provider") throw new Error("No-ID collection must not resolve traces");

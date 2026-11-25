@@ -146,15 +146,12 @@ async function collectEvalEvidence(input: {
       data = { status: CommandStatus.Failed, reason: error instanceof Error ? error.message : String(error) };
     }
   }
-  const logServices = input.plugin.services.services.filter(service => service.logs !== undefined)
-    .filter(service => service.extensions?.some(extension => extension.kind === "log.workloads"))
-    .map((service) => service.name);
-  if (!input.commandContext.signal.aborted && logServices.length) {
+  if (!input.commandContext.signal.aborted && input.plugin.services.extensions("request.workloads").length) {
     try {
       log = collected(await logCommand.run(input.commandContext, {
         bizIds: [...input.correlations],
         namespace: input.namespace,
-        services: logServices,
+        automaticServices: true,
         sinceTime: input.startedAt, untilTime,
       }), input.commandContext);
     } catch (error) {

@@ -162,7 +162,7 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 |---|---|---|
 | data.id | Query 列表 → 逐项 Fact 获取结果 | Data |
 | data.page | 类型、租户条件与分页 → items、page、pageSize、total | Tenant |
-| log.workloads | 业务 ID（可选）、时间窗口 → 本 Service 的 Workload 名称子集 | Log、Collect、Eval |
+| request.workloads | `{ bizId }` → Harness Common 的 `Workload[]`，可显式指定所属 Service | Collect Inspect、Log、Eval |
 | trace.resolve | 不透明输入 ID（业务 ID 或 trace ID）→ 一条或多条 Trace 定位结果，包含来源与解析类型 | Trace、Log，以及调用它们的组合命令 |
 | facet.summarize | 时间窗口、租户、预算 → Facet 汇总 | Overview |
 | facet.sample | Facet、Entry、窗口、数量 → 代表业务 ID | Overview |
@@ -287,15 +287,17 @@ Plugin API 22 将 Value、ValueCodec、Summary 和 JSON 契约移到 `@compforge
 Core 与 Plugin 直接声明 common 依赖并从该包导入；Doctor Plugin SDK 不再导出这些符号。
 PluginClientContext 可提供宿主 DEBUG logger；数据访问适配器可将它传给 DataLoader，普通执行保持安静。
 
-### 日志 Workload 选择（API 23）
+### 按请求选择 Workload（Plugin API 30）
 
-Service.workloads 保留静态归属。log.workloads 在日志命令执行时为每个输入返回其中 0 到 N 个名称，
-Core 校验引用后发现实例并采集；不解释提供方如何判断关联。返回空数组是成功选择，无需发现 Pod 或读取日志；
-失败走现有异常机制，记录证据缺口，不回退到全量扫描。摘要随选择结果归档。
+`request.workloads` 接收 `{ bizId: string }`，在 Extension 的标准返回值中以 `data: Workload[]` 交付完整声明，附带 `summary`。
+省略 `service` 表示归属提供方；跨 Service 使用当前 Catalog 的规范 Service 名。例如控制服务可以返回
+`{ name: "runtime", service: "worker", platform: "kubernetes", location: { kind: "resource", resource_kind: "Pod", name: podName } }`。
+提供方需要纳入自己的常驻 Workload 时，也在结果中返回相应声明；固定服务可使用 `allRequestWorkloads()`。
 
-注册此扩展的日志 Service 参与默认选择；未注册的 Service 仍可通过显式选择采集静态 Workload。
-logs.default 已移除。固定选择全部 Workload 可使用 SDK 的 allLogWorkloads()，动态选择实现 LogWorkloadsExtension。
-同一 Service 同一 kind 只允许一个实现。数据访问声明在扩展 access 中，共享 Client 和取消沿用宿主生命周期。
+同一命令内，每个 biz ID 和 Kubernetes 目标只解析一次。提供方及结果中各归属 Service 使用请求内声明；
+其它 Service 的 Inspect 沿用静态声明。按 ID 自动采集日志时，归属 Service 需要声明 `logs`。
+返回空数组表示该提供方没有相关 Workload；未知归属、同一归属下重名且定义冲突、查询失败都会记录该 ID 的采集缺口。
+批量输入分别保留目标与证据。无 ID 时使用静态目录。
 
 多 biz ID 的结果分别保存，实例发现可取并集，但每个请求的 Probe 和 Evidence 只消费自己的 Workload 子集。
 日志内容关联仍通过 logs.identityRelations，错误模式仍通过 logs.errorPatterns 声明。

@@ -1,4 +1,4 @@
-import { allLogWorkloads } from "@compforge/doctor-plugin";
+import { allRequestWorkloads } from "@compforge/doctor-plugin";
 import { workerVolumes } from "./resources";
 import { workerDatabase } from "./database";
 import { articleToMarkdown, conceptToMarkdown, knowledgeToMarkdown, sectionToMarkdown, stepToMarkdown, workflowToMarkdown } from "@compforge/doctor-plugin";
@@ -24,7 +24,7 @@ const services = createServiceCatalog([
       buildTool: "tsc",
     },
     cases: [apiCases],
-    extensions: [allLogWorkloads()],
+    extensions: [allRequestWorkloads()],
     logs: {}
   },
   {

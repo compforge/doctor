@@ -91,6 +91,7 @@ export async function resolveInspectConfig(
   const collect = await resolveKubernetesCommandConfig(opts, executor, commandContext);
   if (!collect) return undefined;
   return {
+    bizId: opts.bizId,
     timeWindow,
     namespace: collect.kubernetes.namespace,
     namespaceSource: collect.kubernetes.namespaceSource,

@@ -10,7 +10,7 @@ doctor log --service api --since-time '2026-09-16T15:00:00+08:00' --until-time '
 doctor log <biz-id> --since 15m      # 输入 key、trace 与已解析对象关联
 ```
 
-`--service` 和时间起点都可省略：非交互以注册了 `log.workloads` 的 Service 为候选，交互沿用 Service 多选；无 ID 使用默认回看窗口。`--errors-only` 和 `--pattern` 在两种模式下均可用。
+`--service` 和时间起点都可省略：非交互按 `request.workloads` 返回的归属 Service选择日志目标，交互沿用 Service 多选；无 ID 使用默认回看窗口。`--errors-only` 和 `--pattern` 在两种模式下均可用。
 
 ## Workload 与采集范围
 
@@ -25,7 +25,7 @@ Service 可以声明多个 Workload，位置可以是 Kubernetes Service、label
 不会静默切换目标。Manifest 的 Inspect Facts 保留 Service → WorkloadInstance 关联和定位缺口，
 包括环境、namespace、Pod UID 与 container；重叠声明保留各自来源，读取计划按实际容器去重。
 
-每个候选 Service 可通过 `log.workloads` 返回本次输入相关的 Workload 子集。空列表表示无需采集，
+对有 biz ID 的请求，Core 优先使用 `request.workloads` 返回的完整声明，与同次 Collect 的 Inspect 共用一次解析。空列表表示无需采集，
 不会定位对应 Pod 或下载日志；查询失败记录缺口，其它 Service 继续。显式选择未提供此扩展的 Service
 时使用其静态 Workload。批次中的每个业务 ID 独立选择，选择结果与摘要保存在日志归档的 diagnosis.json。
 
@@ -102,7 +102,7 @@ RFC3339，包含端点，允许只贡献一端；两端未知时不贡献。业�
 
 ## 采集流程
 
-1. 确定 namespace、Service 和时间约束。调用 `log.workloads` 选择本次请求相关的 Workload；
+1. 确定 namespace、Service 和时间约束。根据 `request.workloads` 选择本次请求相关的 Workload；
    带业务 ID 时按声明解析 Trace 与关联对象，只为实际调用准备依赖，并由统一生命周期回收。
 2. 批次共享 Inspect，解析 Workload 实例与 Container status，建立 Service → WorkloadInstance 关系，
    识别 current / previous 候选实例。每项请求按自己的 Workload、Pod 和 Container 范围投影 Facts 与缺口。
@@ -186,7 +186,7 @@ HTML 报告不依赖网络或外部静态资源。日志保存在页面内的结
 | [window.ts](../../src/collect/log/window.ts) | 时间窗口规则：显式参数、Data / Trace 贡献、padding 与默认策略 |
 | [data-window.ts](../../src/collect/log/data-window.ts) | 从 Data Evidence 提取贡献与来源，保留无效贡献原因 |
 | [trace-window.ts](../../src/collect/log/trace-window.ts) | 把本地完整 Trace span 范围转换为窗口贡献 |
-| [workloads.ts](../../src/collect/log/workloads.ts) | 调用 Extension，选择并合并本次请求的 Workload |
+| [request-workloads.ts](../../src/collect/request-workloads.ts) | 调用 Extension，选择并合并本次请求的 Workload |
 | [fact/inspect.ts](../../src/collect/log/fact/inspect.ts) | 共享实例发现，按请求投影 Facts 与采集缺口 |
 | [probe/service.ts](../../src/collect/log/probe/service.ts) | 调度日志读取，匹配内容并保留各来源证据 |
 

@@ -19,6 +19,7 @@ export type JsonValue = string | number | boolean | null | JsonValue[] | { [key:
 export type InspectField = "env" | "image" | "config" | "event" | "hpa";
 
 export interface CollectInspectCliOpts extends TimeWindowOptions {
+  bizId?: string;
   namespace?: string;
   services?: readonly string[];
   deploymentConfig?: boolean;
@@ -34,6 +35,7 @@ export interface CollectInspectCliOpts extends TimeWindowOptions {
 }
 
 export interface InspectConfig {
+  bizId?: string;
   timeWindow?: InspectTimeWindow;
   namespace: string;
   namespaceSource: ResolvedNamespace["source"];
