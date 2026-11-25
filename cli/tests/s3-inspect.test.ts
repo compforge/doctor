@@ -57,13 +57,9 @@ test("inspect verifies the wire frame and cleans the returned version at the exa
     const result = await inspectS3(fixture.client, request, async () => wire, async () => ({ approved: true }));
     expect(result).toMatchObject({ errors: {}, bucketHead: { httpStatus: 200, region: "test-region", server: "test-store" },
       object: { size: 37 }, versioning: "enabled", chunk: { maxChunkBytes: 16777216, stoppedReason: "exact" } });
-    expect(result.chunk?.samples.slice(1, 3)).toMatchObject([
-      { bytes: 4194304, outcome: "accepted", requestId: "frame-4194304" },
-      { bytes: 8388608, outcome: "accepted", requestId: "frame-8388608" },
-    ]);
     expect(result.chunk?.samples.at(-1)?.requestId).toBe("rejected-frame");
-    expect(sizes).toEqual([1048576, 4194304, 8388608, 16777216, 16777217]);
-    expect(deleted).toHaveLength(4);
+    expect(sizes).toEqual([16777216, 16777217]);
+    expect(deleted).toHaveLength(1);
     expect(objects.size).toBe(0);
   } finally { await http.dispose(); await fixture.close(); }
 });
@@ -126,7 +122,14 @@ test("non-default chunk ceiling, byte budget and cleanup errors preserve only me
   } };
   const objects = { headObject: async () => ({ size, metadata: {} }), deleteObject: async () => {} };
   const probe = () => probeChunkLimit(wire, objects, "bucket", new AbortController().signal);
-  expect((await probe()).maxChunkBytes).toBe(limit);
+  const capped = await probe();
+  expect(capped.maxChunkBytes).toBe(limit);
+  expect(capped.samples.map(s => s.bytes)).toEqual([16777216, 8388608, 8388609]);
+  expect(capped.samples.map(s => s.outcome)).toEqual(["size-rejected", "accepted", "size-rejected"]);
+  limit = 4 * 1024 ** 2;
+  const smaller = await probe();
+  expect(smaller.maxChunkBytes).toBe(limit);
+  expect(smaller.samples.map(s => s.bytes)).toEqual([16777216, 8388608, 4194304, 4194305]);
   limit = Number.MAX_SAFE_INTEGER;
   expect(await probe()).toMatchObject({ acceptedBytes: 64 * 1024 ** 2, stoppedReason: "budget" });
   objects.deleteObject = async () => { throw new Error("cleanup failed"); };

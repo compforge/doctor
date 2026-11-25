@@ -111,7 +111,8 @@ async function probeFrame(wire: Pick<S3Wire, "request">, client: Objects, bucket
 export async function probeChunkLimit(wire: Pick<S3Wire, "request">, client: Objects, bucket: string, signal: AbortSignal): Promise<ChunkProbe> {
   const result: ChunkProbe = { samples: [], stoppedReason: "budget" };
   let bytes = 0;
-  let next = MiB;
+  const initial = 16 * MiB;
+  let next = initial;
   while (next > 0 && next <= chunkBudget.largest && bytes + next <= chunkBudget.bytes && result.samples.length < chunkBudget.attempts) {
     if (signal.aborted) { result.stoppedReason = "deadline or cancellation"; break; }
     const sample = await probeFrame(wire, client, bucket, next, signal);
@@ -134,11 +135,10 @@ export async function probeChunkLimit(wire: Pick<S3Wire, "request">, client: Obj
       const middle = Math.floor((lo + hi) / 2);
       const wholeMiB = Math.floor(middle / MiB) * MiB;
       // Storage limits are commonly configured in MiB. Check the adjacent byte before refining.
-      if (lo > MiB && lo % MiB === 0) next = lo + 1;
+      if (lo >= MiB && lo % MiB === 0) next = lo + 1;
       else next = wholeMiB > lo ? wholeMiB : middle;
-    } else if (next === MiB) next = 4 * MiB;
-    else if (next === 16 * MiB) next++;
-    else next = Math.min(chunkBudget.largest + 1, 2 ** Math.ceil(Math.log2(next + 1)));
+    } else if (lo === initial) next = lo + 1;
+    else next = Math.min(chunkBudget.largest + 1, 2 ** Math.ceil(Math.log2(lo + 1)));
   }
   return result;
 }
