@@ -1,6 +1,8 @@
 import { S3Error, type S3ErrorDetails, type S3Client, type S3ObjectMetadata } from "@compforge/harness-toolbox/s3";
 import type { S3Request } from "./input";
 
+import type { S3Inspection } from "./inspect";
+
 export interface S3Entry {
   type: "bucket" | "prefix" | "object";
   name: string;
@@ -10,6 +12,7 @@ export interface S3Entry {
 export interface S3Result {
   entries: S3Entry[];
   pages: number;
+  inspection?: S3Inspection;
   complete: boolean;
   continuationToken?: string;
   stoppedReason?: string;

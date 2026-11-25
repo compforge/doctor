@@ -702,7 +702,7 @@ export function createDoctorProgram(
     await runCommand(storeCommand, opts, domainInput(opts), commandRuntime);
   });
   withS3Options(
-    catalog.command("s3").helpGroup("Collect · 采集与分析:").description("按 ls/stat/cat 浏览 Service 的 S3 bucket、前缀与对象（只读）")
+    catalog.command("s3").helpGroup("Collect · 采集与分析:").description("浏览 S3 bucket 与对象，inspect 采集元信息并临时写入以探测 chunk 上限")
       .addHelpText("after", `
 分析思路：
   通过 Service 的 S3 连接列举、查看对象元数据或读取有界内容，保留对象路径与读取范围。
@@ -711,6 +711,10 @@ export function createDoctorProgram(
 `),
   ).action(async (action, path, _opts, command: CommandT) => {
     const opts = commandOptionsWithSources(command);
+    if (action === "inspect") {
+      if (command.getOptionValueSourceWithGlobals("format") === "default" && opts.format === "summary") opts.format = "bundle";
+      if (command.getOptionValueSourceWithGlobals("namespace") === "default" && opts.namespace === "default") delete opts.namespace;
+    }
     const { s3Command } = await import("../collect/s3/command");
     await runCommand(s3Command, opts, { ...domainInput(opts), action, path }, commandRuntime);
   });

@@ -6,6 +6,7 @@ import { resolveDataSourceTarget } from "../../datasource/workload";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
 import { canPrompt, chooseParameter, ParameterCancelled } from "../../terminal/parameters";
 import type { S3Input, S3Request } from "./input";
+import { prepareWire } from "./wire-access";
 
 export async function resolveS3Provider(context: CommandContext, input: S3Input, request: S3Request) {
   const interactive = canPrompt({ interactive: input.interactive });
@@ -18,7 +19,7 @@ export async function resolveS3Provider(context: CommandContext, input: S3Input,
   const capability = capabilities.find(source => source.id === id);
   if (!capability || capability.kind !== "s3") throw new CommandInputError(`Service '${service}' 未声明 S3 DataSource '${id}'`);
   await context.ensureEnvironment({ kubernetes: true });
-  const collect = await resolveKubernetesCommandConfig({ ...input, ...context.options.environment,
+  const collect = await resolveKubernetesCommandConfig({ ...context.options.environment, ...input,
     profile: context.profile.name, interactive }, undefined, context);
   if (!collect) throw new ParameterCancelled();
   const executor = createKubernetesExecutor(collect);
@@ -38,16 +39,19 @@ export async function resolveS3Provider(context: CommandContext, input: S3Input,
     });
     if (!target) throw new ParameterCancelled();
   }
-  const resolved = await resolveS3Configuration(context, { collect, service, capability, target }, executor);
+  const resolved = await resolveS3Configuration(context, { collect, service, capability, target, optionalBucket: request.action === "inspect" }, executor);
   if (!resolved.target) throw new Error(resolved.reason ?? "未解析到 S3 目标");
   const access = await prepareS3Access(context, collect, resolved.target, resolved.client);
   const endpoint = new URL(resolved.target.endpoint);
   endpoint.username = ""; endpoint.password = ""; endpoint.search = ""; endpoint.hash = "";
-  return { client: access.client, identity: {
-    service, dataSource: capability.id, description: capability.description,
-    endpoint: endpoint.toString(), region: resolved.target.region,
-    configuredBucket: resolved.bucket, configuredPrefix: resolved.bucketPrefix,
-    source: resolved.source, namespace: collect.kubernetes.namespace, pod: target?.pod, container: target?.container,
-    channel: access.channel, executionLocation: "doctor-host",
-  } };
+  const configuration = resolved.target;
+  return { client: access.client, prepareWire: (bucket: string, signal: AbortSignal) =>
+    prepareWire(context, collect, executor, service, capability, configuration, access.client, access.transport, bucket, signal),
+    identity: {
+      service, dataSource: capability.id, description: capability.description,
+      endpoint: endpoint.toString(), region: resolved.target.region, addressStyle: resolved.target.forcePathStyle === false ? "virtual" : "path",
+      configuredBucket: resolved.bucket, configuredPrefix: resolved.bucketPrefix,
+      source: resolved.source, namespace: collect.kubernetes.namespace, pod: target?.pod, container: target?.container,
+      channel: access.channel, executionLocation: "doctor-host",
+    } };
 }

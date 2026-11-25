@@ -9,7 +9,22 @@ export function s3Summary(request: S3Request, result: S3Result | undefined, iden
     `Service: ${identity?.service ?? request.service ?? "未选择"} · DataSource: ${identity?.dataSource ?? "未选择"}`];
   if (identity) lines.push(`Endpoint: ${identity.endpoint} · 通道: ${identity.channel} · 执行位置: ${identity.executionLocation}`);
   if (!result) return [...lines, `失败：${reason ?? "未取得证据"}`].join("\n") + "\n";
-  if (request.action === "ls") {
+  if (result.inspection) {
+    const inspection = result.inspection;
+    lines.push(`Bucket HEAD: ${inspection.bucketHead?.httpStatus ?? "-"} · Region: ${inspection.bucketHead?.region ?? "-"} · Server: ${display(inspection.bucketHead?.server ?? "-")} · Versioning: ${inspection.versioning ?? "-"}`);
+    if (inspection.object) lines.push(JSON.stringify(inspection.object, null, 2));
+    const chunk = inspection.chunk;
+    const bounds = [chunk?.acceptedBytes && `至少 ${chunk.acceptedBytes} B`, chunk?.rejectedBytes && `小于 ${chunk.rejectedBytes} B`].filter(Boolean);
+    lines.push("aws-chunked 单块上限：" + (chunk?.maxChunkBytes ? `${chunk.maxChunkBytes} B（实测）` : bounds.join("，") || "未测出"));
+    for (const sample of chunk?.samples ?? []) {
+      const mib = sample.bytes / 1024 ** 2;
+      const size = Number.isInteger(mib) ? `${mib} MiB` : `${sample.bytes} B`;
+      const outcome = { accepted: "通过", "size-rejected": "大小被拒绝", unknown: "未确认" }[sample.outcome];
+      lines.push(`  ${size} · ${outcome} · HTTP ${sample.httpStatus ?? "-"} · Request ID ${display(sample.requestId ?? "-")}`);
+      if (sample.cleanup?.startsWith("unconfirmed")) lines.push("待核对临时对象：" + display(sample.key));
+    }
+    for (const [field, reason] of Object.entries(inspection.errors)) lines.push(field + "：" + display(reason));
+  } else if (request.action === "ls") {
     lines.push("", "TYPE    SIZE (B)     MODIFIED                  NAME");
     for (const entry of result.entries) lines.push(
       `${entry.type === "object" ? "FILE  " : entry.type === "bucket" ? "BUCKET" : "DIR   "}  ${String(entry.size ?? "-").padEnd(11)}  ${(entry.modified?.toISOString() ?? "-").padEnd(24)}  ${display(entry.type === "bucket" ? entry.name + "/" : entry.name)}`,
