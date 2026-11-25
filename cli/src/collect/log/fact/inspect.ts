@@ -1,3 +1,4 @@
+import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import type { ExecResult, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { Inspect } from "../../inspection";
 import type { LogCollectOptions, LogCommandContext, LogInspectionFacts, LogWorkloadTarget } from "../model";
@@ -18,6 +19,7 @@ export function makeLogInspect(
   services: readonly string[],
   executor: Executor,
   workloads?: Readonly<Record<string, readonly string[]>>,
+  catalog?: ServiceCatalog,
 ): Inspect<LogInspectionFacts, LogCommandContext> {
   return {
     id: "log-target",
@@ -43,7 +45,7 @@ export function makeLogInspect(
       const workloadMissing: Record<string, Record<string, string[]>> = {};
       for (const serviceName of services) {
         ctx.command.signal.throwIfAborted();
-        const service = ctx.command.plugin.services.find(serviceName);
+        const service = (catalog ?? ctx.command.plugin.services).find(serviceName);
         const targets: LogWorkloadTarget[] = byService[serviceName] = [];
         const gaps: string[] = missing[serviceName] = [];
         if (!service?.workloads.length) {

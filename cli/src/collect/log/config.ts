@@ -117,6 +117,7 @@ export function resolveLogServices(raw: readonly string[], catalog: ServiceCatal
 
 export interface LogServiceSelectionInput {
   raw?: readonly string[];
+  requestOwners?: ReadonlySet<string>;
   namespace: string;
   catalog: ServiceCatalog;
   executor: Executor;
@@ -133,7 +134,7 @@ export async function resolveLogServiceSelection(
 ): Promise<string[] | undefined> {
   if (input.raw !== undefined) return resolveLogServices(input.raw, input.catalog);
   const defaults = input.catalog.services.filter(service => service.logs !== undefined)
-    .filter(service => service.extensions?.some(extension => extension.kind === "log.workloads"))
+    .filter(service => input.requestOwners?.has(service.name) || service.extensions?.some(extension => extension.kind === "request.workloads"))
     .map((service) => service.name);
   const interactive = isInteractive(input.interactive);
   if (!interactive) return defaults;

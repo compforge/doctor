@@ -7,7 +7,7 @@ export function workloadProbeProviders(catalog: ServiceCatalog, serviceName?: st
     .filter(({ service }) => serviceName === undefined || service.name === canonical)
     .map(({ service, extension }) => {
       const probe = requireWorkloadProbeExtension(extension);
-      if (!service.workloads.some(workload => workload.name === probe.workload)) {
+      if (serviceName === undefined && !service.workloads.some(workload => workload.name === probe.workload)) {
         throw new Error(`${service.name}/${probe.id}: unknown Workload '${probe.workload}'`);
       }
       return { service, extension: probe };

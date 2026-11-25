@@ -45,12 +45,12 @@ Inspect、Tenant、Data、Trace 和 Log 是独立证据面，集合命令不能�
 ### Inspect 保持 Service 范围与敏感数据确认语义
 
 Inspect 默认覆盖 Plugin Catalog 声明的全部 Service；`--deployment-config` 和 `--dependencies` 仍沿用
-`doctor inspect` 的敏感数据确认语义，非交互模式缺省跳过。业务 ID 传给 Data、Trace 和 Log，Inspect
-不把业务 ID 解释为 Service 或 Pod 范围。
+`doctor inspect` 的敏感数据确认语义，非交互模式缺省跳过。注册 `request.workloads` 的 Plugin 可按 biz ID 返回完整 Workload；Inspect 和 Log 共用解析结果。
+跨 Service 返回的 Pod 按其 `service` 归档。批量输入逐 ID 保存 Inspect 证据。
 
 ### Tenant 保持独立聚合粒度
 
-Tenant 使用 `--tenant-id` / `--tenant-name`，业务 ID 仍只传给 Data、Trace 和 Log。组合执行把租户选择
+Tenant 使用 `--tenant-id` / `--tenant-name`，租户选择独立于业务 ID。组合执行把租户选择
 记录在共享 `CommandContext`，但集合层不尝试从 biz-id 推导租户，也不读取 Model Catalog。非交互环境
 选择 tenant 数据面时必须显式给出租户。
 

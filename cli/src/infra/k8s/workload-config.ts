@@ -47,7 +47,7 @@ export interface KubernetesWorkloadConfigCapture {
   serviceCapture?: KubernetesResourceCapture;
   deploymentCapture?: KubernetesResourceCapture;
   configMapCapture?: KubernetesResourceCapture;
-  podCapture: KubernetesResourceCapture;
+  podCapture?: KubernetesResourceCapture;
   snapshot?: KubernetesWorkloadConfigSnapshot;
   parseError?: string;
   deploymentParseError?: string;
@@ -324,12 +324,13 @@ export async function captureKubernetesWorkloadConfig(
   namespace: string,
   includeDeploymentConfig: boolean,
   includeServices: boolean,
+  includePodInventory = true,
 ): Promise<KubernetesWorkloadConfigCapture> {
   const [serviceCapture, podCapture, deploymentCapture, configMapCapture] = await Promise.all([
     includeServices
       ? reader({ apiVersion: "v1", resource: "services", namespace })
       : Promise.resolve(undefined),
-    reader({ apiVersion: "v1", resource: "pods", namespace }),
+    includePodInventory ? reader({ apiVersion: "v1", resource: "pods", namespace }) : undefined,
     includeDeploymentConfig
       ? reader({ apiVersion: "apps/v1", resource: "deployments", namespace })
       : Promise.resolve(undefined),
@@ -355,7 +356,7 @@ export async function captureKubernetesWorkloadConfig(
     result.parseError = error instanceof Error ? error.message : String(error);
   }
   // 三类证据彼此独立；任一可选读取失败都不应抹掉已经取得的其它事实。
-  if (result.snapshot && !podCapture.error) {
+  if (result.snapshot && podCapture && !podCapture.error) {
     try {
       result.snapshot.pods = parsePods(JSON.stringify(podCapture.value), namespace);
     } catch (error) {

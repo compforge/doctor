@@ -359,7 +359,7 @@ export interface ServiceDefinition extends Omit<Service, "environment" | "compon
   cases?: readonly ServiceCaseSource[];
   resources?: readonly ServiceResourceDefinition[];
   /**
-   * Presence enables explicit log collection; log.workloads selects automatic collection targets.
+   * Presence enables log collection for the Service, including workloads contributed by a request provider.
    * errorPatterns declares Service-specific error signatures that do not look like generic
    * errors (e.g. WARNING-level lines carrying business error codes); Core merges them into
    * --errors-only filtering. Invalid regex fails the log command explicitly at pattern build.

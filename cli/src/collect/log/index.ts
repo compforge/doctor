@@ -1,6 +1,8 @@
+import { isInteractive } from "../../terminal/policy";
+import { resolveRequestWorkloads, type RequestWorkloads } from "../request-workloads";
 import { factsLogWindows, type DataLogWindows } from "./data-window";
 import { timePaddingMs, selectLogTimeWindow, resolveLogTimeWindow, validateLogTimeWindow, type TraceLogWindow } from "./window";
-import { resolveLogWorkloads, mergeLogWorkloads } from "./workloads";
+import { isDeepStrictEqual } from "node:util";
 import { gapMessages } from "../evidence-gaps";
 import { collectLogAssociations } from "./association";
 import { projectDataFacts } from "../data/projection";
@@ -69,6 +71,7 @@ export * from "./render";
 export interface CollectLogCliOpts {
   bizIds: readonly string[];
   itemConcurrency?: number;
+  automaticServices?: boolean;
   /** Complete trace evidence supplied by an earlier collect stage; never a new remote lookup. */
   traceWindows?: readonly TraceLogWindow[];
   dataWindows?: DataLogWindows;
@@ -143,10 +146,19 @@ async function prepareLogBatch(
   useLogger("collect").info(`namespace: ${resolvedNamespace.namespace}（${resolvedNamespace.source}）`);
 
   const executor = createKubernetesExecutor(collect);
+  const selectionIds = opts.bizIds.length ? opts.bizIds : [undefined];
+  const scopes: (RequestWorkloads | undefined)[] = [];
+  const dynamic = plugin.services.extensions("request.workloads").length > 0;
+  for (const id of selectionIds) {
+    scopes.push(id && dynamic
+      ? await resolveRequestWorkloads(commandContext, plugin.services, id, executor, collect.kubernetes) : undefined);
+  }
   let services: string[] | undefined;
   try {
     services = await resolveLogServiceSelection({
       raw: opts.services,
+      interactive: opts.automaticServices ? false : undefined,
+      requestOwners: new Set(scopes.flatMap(scope => [...scope?.owners ?? []])),
       namespace: resolvedNamespace.namespace,
       catalog: plugin.services,
       executor,
@@ -161,26 +173,22 @@ async function prepareLogBatch(
     useLogger("collect").warn("已取消");
     return 130;
   }
-  if (!services.length) {
+  if (!services.length && !scopes.some(Boolean)) {
     useLogger("collect").error("没有选中日志 Service；请从 Plugin Catalog 选择 --service");
     return 2;
   }
   useLogger("collect").info(`services: ${services.join(", ")}`);
-  const selectionIds = opts.bizIds.length ? opts.bizIds : [undefined];
-  const selections = await resolveLogWorkloads(services, selectionIds.map(bizId => ({
-    bizId, ...resolveLogTimeWindow({ ...opts, id: bizId }), untilTime: opts.untilTime,
-  })), plugin.services, commandContext, executor, {
-    namespace: resolvedNamespace.namespace, kubeconfig: resolved.kubeconfig, context: collect.kubernetes.context,
+  const automatic = opts.services === undefined && (opts.automaticServices || !isInteractive());
+  const selections = scopes.map(scope => {
+    const catalog = scope?.catalog ?? plugin.services;
+    const declarations = Object.fromEntries(services.map(name => [name,
+      scope && (automatic || scope.gaps.length) && !scope.owners.has(name) ? [] : catalog.find(name)!.workloads]));
+    const workloads = Object.fromEntries(Object.entries(declarations).map(([name, targets]) => [name, targets.map(w => w.name)]));
+    return { declarations, workloads, summaries: scope?.summaries, gaps: scope?.gaps ?? [] };
   });
-  const workloads = mergeLogWorkloads(selections.map(selection => selection.workloads));
-  selections.forEach((selection, index) => {
-    for (const [service, names] of Object.entries(selection.workloads)) {
-      useLogger("collect:log").info(`${selectionIds[index] ?? "Service"} ${service}: Workload [${names.join(", ")}]${selection.summaries[service]?.text ? `；${selection.summaries[service]!.text}` : ""}`);
-    }
-    for (const gap of selection.gaps) useLogger("collect:log").warn(gap);
-  });
+  for (const selection of selections) for (const gap of selection.gaps) useLogger("collect:log").warn(gap);
 
-  const selected = services.flatMap(name => plugin.services.find(name)!.workloads.filter(workload => workloads[name]?.includes(workload.name)))
+  const selected = selections.flatMap(selection => Object.values(selection.declarations).flat())
     .filter(workload => !workload.namespace || workload.namespace === resolvedNamespace.namespace);
   if (selected.length) await enforceKubernetesAccess(resolveKubernetesCommandContext(executor, commandContext).access, {
     command: "doctor log",
@@ -210,7 +218,7 @@ async function prepareLogBatch(
   const access = new ClientNodePodLogAccess(new KubectlPodLogAccess(executor, resolvedNamespace.namespace), {
     namespace: resolvedNamespace.namespace, kubeconfig: resolved.kubeconfig, context: collect.kubernetes.context, signal: commandContext.signal,
   });
-  return { pattern, format, collect, resolved, resolvedNamespace, executor, services, access, selections };
+  return { pattern, format, collect, resolved, resolvedNamespace, executor, services, access, selections, scopes };
 }
 
 /**
@@ -329,9 +337,23 @@ export async function runCollectLog(
     }];
   });
   const artifacts = requests.map(request => commandContext.artifacts.add({ command: "log", path: request.outputDir }));
-  const results = await collectLog(requests, commandContext, executor,
-    line => useLogger().info(`${line}`), bundle, access, opts.itemConcurrency);
-  const byId = new Map(requests.map((request, index) => [request.bizId, { request, result: results[index]!, artifact: artifacts[index]! }]));
+  const log = (line: string) => useLogger().info(line);
+  // Share discovery only while the same owner/name identifies the same declaration.
+  const groups: { scope?: RequestWorkloads; requests: LogCollectOptions[] }[] = [];
+  for (const request of requests) {
+    const scope = prepared.scopes[requestIds.indexOf(request.bizId)];
+    const group = groups.find(group => group.scope === scope || services.every(name =>
+      isDeepStrictEqual(group.scope?.catalog.find(name)?.workloads, scope?.catalog.find(name)?.workloads)));
+    if (group) group.requests.push(request);
+    else groups.push({ scope, requests: [request] });
+  }
+  const results = new Map<LogCollectOptions, LogItemResult>();
+  for (const [index, group] of groups.entries()) {
+    const evidence = groups.length === 1 ? bundle : new EvidenceBundle(join(staging, `discovery-${index + 1}`));
+    const items = await collectLog(group.requests, commandContext, executor, log, evidence, access, opts.itemConcurrency, group.scope?.catalog);
+    group.requests.forEach((request, i) => results.set(request, items[i]!));
+  }
+  const byId = new Map(requests.map((request, index) => [request.bizId, { request, result: results.get(request)!, artifact: artifacts[index]! }]));
   const items: LogOutput["items"][number][] = [];
   requestIds.forEach((bizId, index) => {
     const selection = prepared.selections[index]!;
@@ -376,13 +398,14 @@ export async function collectLog(
   bundle: EvidenceBundle,
   access?: KubernetesPodLogAccess,
   concurrency = 2,
+  catalog = commandContext.plugin.services,
 ): Promise<LogItemResult[]> {
   if (!requests.length) return [];
   const startedAt = new Date().toISOString();
   const first = requests[0]!;
   const services = [...new Set(requests.flatMap(request => request.services))];
-  const workloads = mergeLogWorkloads(requests.map(request => request.workloads ?? Object.fromEntries(
-    request.services.map(name => [name, commandContext.plugin.services.find(name)!.workloads.map(workload => workload.name)]))));
+  const workloads = Object.fromEntries(services.map(name => [name, [...new Set(requests.flatMap(request =>
+    request.services.includes(name) ? request.workloads?.[name] ?? catalog.find(name)!.workloads.map(w => w.name) : []))]]));
   const { environment } = await commandContext.environment(executor);
   const source = access ?? new ClientNodePodLogAccess(new KubectlPodLogAccess(executor, first.namespace), {
     namespace: first.namespace, signal: commandContext.signal, kubeconfig: first.kubeconfig, context: environment.context,
@@ -407,7 +430,7 @@ export async function collectLog(
         pod: requests.every(request => request.pod === first.pod) ? first.pod : undefined,
         container: requests.every(request => request.container === first.container) ? first.container : undefined,
       } },
-      inspects: [makeLogInspect(services, executor, workloads)],
+      inspects: [makeLogInspect(services, executor, workloads, catalog)],
       items: contexts.map(ctx => ({ ctx, config: ctx.config, projectFacts: (facts: Readonly<LogInspectionFacts>) => projectLogFacts(facts, ctx.config) })),
       concurrency, signal: commandContext.signal,
       planProbes: (_facts, config) => {

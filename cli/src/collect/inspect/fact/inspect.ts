@@ -238,6 +238,7 @@ export function makeServiceTargetsInspect(
         config.services.some((name) => catalog.find(name)?.workloads.some(
           (workload) => workload.location.kind === "service",
         )),
+        !config.bizId,
       );
       const deploymentReasons = scope.deployment ? [
         capture.deploymentParseError
@@ -255,10 +256,10 @@ export function makeServiceTargetsInspect(
           ? failedFact("inspect.deployment-configuration", "service-targets", deploymentReasons.join("；"))
           : collectedFact("inspect.deployment-configuration", "service-targets", { requested: true });
       const dependencyTargetsFailure = capture.podParseError
-        ?? capture.podCapture.error;
+        ?? capture.podCapture?.error;
       const steps = [
         ...(capture.serviceCapture ? [["inspect-services", "Workload Service 资源", capture.serviceCapture, undefined] as const] : []),
-        ["inspect-pods", "Pod 运行态", capture.podCapture, capture.podParseError],
+        ...(capture.podCapture ? [["inspect-pods", "Pod 运行态", capture.podCapture, capture.podParseError] as const] : []),
         ...(capture.deploymentCapture ? [[
           "inspect-deployments",
           "Deployment env 配置",
@@ -353,7 +354,7 @@ export function makeServiceTargetsInspect(
             }
           }
           const podFailure = capture.podParseError
-            ?? capture.podCapture.error;
+            ?? capture.podCapture?.error;
           workloads[definition.name] = {
             name: definition.name,
             description: definition.description,

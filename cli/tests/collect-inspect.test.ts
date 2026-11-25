@@ -1,4 +1,4 @@
-import { allLogWorkloads } from "@compforge/doctor-plugin";
+import { allRequestWorkloads } from "@compforge/doctor-plugin";
 import { evidenceGaps } from "../src/collect/evidence-gaps";
 import { withSummary } from "@compforge/doctor-plugin";
 import {
@@ -657,7 +657,7 @@ test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选
         component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "example-api",
         workloads: examplePlugin.services.find("example-api")!.workloads,
-        extensions: [allLogWorkloads()],
+        extensions: [allRequestWorkloads()],
         logs: {}
       }]),
     } satisfies PluginDefinition;

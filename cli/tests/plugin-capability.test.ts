@@ -1,4 +1,4 @@
-import { allLogWorkloads } from "@compforge/doctor-plugin";
+import { allRequestWorkloads } from "@compforge/doctor-plugin";
 import { traceExtension } from "../../packages/plugin/tests/extension-fixture";
 import { expect, test } from "bun:test";
 import {
@@ -26,7 +26,7 @@ const plugin = {
     component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "sample-api",
     workloads: [],
-    extensions: [allLogWorkloads()],
+    extensions: [allRequestWorkloads()],
     logs: {}
   }]),
 } satisfies PluginDefinition;

@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@compforge/harness-common": "0.10.2",
+    "@compforge/harness-common": "0.10.3",
     "@compforge/spec-case": "0.0.8",
     "@compforge/trace-harness": "0.3.2",
     "@compforge/harness-toolbox": "0.14.11"

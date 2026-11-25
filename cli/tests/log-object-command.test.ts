@@ -1,4 +1,4 @@
-import { allLogWorkloads } from "@compforge/doctor-plugin";
+import { allRequestWorkloads } from "@compforge/doctor-plugin";
 import { expect, spyOn, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -29,7 +29,7 @@ for (const variant of ["collected", "partial", "failed", "raw", "reuse", "collec
       name: "test", configPath: "", value: { readonly: true, namespace: "test", kube: { kubeconfig_path: kubeconfig } }, pluginConfig: {},
     }, { format: "summary", plugin: { id: "objects", version: "1", services: createServiceCatalog([{
       ...logService(), logs: {  identityRelations: { biz_id: ["carrier_id"] } },
-      extensions: [allLogWorkloads(), ...(variant === "raw" ? [] : [inspectExtension({ access: {}, accepts: ["biz_id"], expands: ["carrier_id"], provides: ["reference"],
+      extensions: [allRequestWorkloads(), ...(variant === "raw" ? [] : [inspectExtension({ access: {}, accepts: ["biz_id"], expands: ["carrier_id"], provides: ["reference"],
         inspect: async (_context, batch) => { queries++; return batch.map(({ identity }) => variant === "failed" ? {
           identity, status: "failed" as const, reason: "database unavailable",
         } : { identity, status: "collected" as const, result: {

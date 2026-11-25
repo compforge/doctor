@@ -1,4 +1,4 @@
-import { allLogWorkloads } from "@compforge/doctor-plugin";
+import { allRequestWorkloads } from "@compforge/doctor-plugin";
 import { inspectExtension } from "../../packages/plugin/tests/extension-fixture";
 import { expect, test } from "bun:test";
 import { createServiceCatalog, describeService, type ServiceDefinition } from "@compforge/doctor-plugin";
@@ -15,7 +15,7 @@ const service: ServiceDefinition = {
   aliases: ["api"],
   workloads: [],
   logs: {},
-  extensions: [allLogWorkloads(),
+  extensions: [allRequestWorkloads(),
   inspectExtension({
     access: {}, accepts: ["biz_id"], provides: ["record"],
     resolveTarget: async () => { throw new Error("offline"); },

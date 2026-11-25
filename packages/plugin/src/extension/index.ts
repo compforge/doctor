@@ -36,9 +36,9 @@ export * from "./workload";
 export * from "./vdb";
 
 export * from "./health";
-export * from "./log";
 export * from "./downstreams";
 
 
 export * from "./inspect";
 export * from "./probe-result";
+export * from "./request-workloads";

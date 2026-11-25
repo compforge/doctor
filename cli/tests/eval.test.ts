@@ -202,7 +202,7 @@ test("Eval collects task-ID logs when the Plugin has no trace resolver", async (
     expect(result.output?.evidence.log.status).toBe(CommandStatus.Ok);
     expect(result.output?.evidence.trace.status).toBe("unavailable");
     expect(logs).toHaveBeenCalledTimes(1);
-    expect(logs.mock.calls[0]![1]).toMatchObject({ bizIds: ["task-a"], services: ["chat"] });
+    expect(logs.mock.calls[0]![1]).toMatchObject({ bizIds: ["task-a"], automaticServices: true });
     expect(traces).not.toHaveBeenCalled();
   } finally {
     for (const mock of [executor, logs, traces]) mock.mockRestore();

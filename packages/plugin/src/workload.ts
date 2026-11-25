@@ -20,6 +20,7 @@ export function kubernetesServiceWorkload(
 export function validateWorkloadDeclaration(value: Workload): void {
   const text = (value: unknown) => typeof value === "string" && !!value.trim();
   if (!value || typeof value !== "object" || !text(value.name) || value.platform !== "kubernetes"
+    || (value.service !== undefined && !text(value.service))
     || (value.namespace !== undefined && !text(value.namespace)) || (value.container !== undefined && !text(value.container))) {
     throw new Error("Expected a complete consumer Workload declaration");
   }

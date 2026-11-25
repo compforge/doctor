@@ -1,4 +1,4 @@
-import { allLogWorkloads } from "@compforge/doctor-plugin";
+import { allRequestWorkloads } from "@compforge/doctor-plugin";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 import { expect, spyOn, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -18,7 +18,7 @@ import { readBundleIndex, readBundleText, readBundleExecutions } from "./bundle-
 import { fixtureReport, readReport } from "./report-fixture";
 
 // Keep the real Overview -> Collect delegation and Command wrappers; only replace external work.
-test.each([1, 2])("overview with collect concurrency %i delivers same-named artifacts and shared Inspect/Tenant evidence", async concurrency => {
+test.each([1, 2])("overview with collect concurrency %i delivers same-named artifacts and request-scoped Inspect and shared Tenant evidence", async concurrency => {
   const root = mkdtempSync(join(tmpdir(), "doctor-overview-idempotency-"));
   const calls: Record<string, number> = {};
   const plugin: PluginDefinition = {
@@ -27,7 +27,7 @@ test.each([1, 2])("overview with collect concurrency %i delivers same-named arti
       component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name,
       workloads: [],
-      extensions: [...(name === "chat-server" ? [allLogWorkloads()] : [])],
+      extensions: [...(name === "chat-server" ? [allRequestWorkloads()] : [])],
       logs: {}
     }))),
   };
@@ -58,7 +58,7 @@ test.each([1, 2])("overview with collect concurrency %i delivers same-named arti
   replace(tenantCommand, "tenant");
   replace(dataCommand, "data", input => expect(input.bizIds).toEqual(["a", "b", "c", "d", "e"]));
   replace(traceCommand, "trace");
-  replace(logCommand, "log", (input) => expect(input.services).toEqual(["chat-server"]));
+  replace(logCommand, "log", (input) => expect(input.automaticServices).toBe(true));
   try {
     const kinds = await resolveCollectKinds(undefined, false);
     expect(kinds).toEqual([...COLLECT_KINDS]);
@@ -66,13 +66,15 @@ test.each([1, 2])("overview with collect concurrency %i delivers same-named arti
       kinds: kinds!, namespace: "ns", tenantId: "tenant-one",
     }, concurrency);
     expect(result.status).toBe(CommandStatus.Partial);
-    expect(calls).toEqual({ inspect: 1, tenant: 1, data: 1, trace: 1, log: 1 });
-    for (const command of ["inspect", "tenant"]) expect(result.artifacts.filter((artifact) => artifact.command === command)).toHaveLength(1);
+    expect(calls).toEqual({ inspect: 5, tenant: 1, data: 1, trace: 1, log: 1 });
+    expect(result.artifacts.filter(artifact => artifact.command === "inspect")).toHaveLength(5);
+    expect(result.artifacts.filter(artifact => artifact.command === "tenant")).toHaveLength(1);
     const manifests = result.artifacts.filter((artifact) => artifact.command === "collect");
     expect(manifests).toHaveLength(1);
     for (const artifact of manifests) {
       const manifest = JSON.parse(readFileSync(artifact.path, "utf8"));
-      expect(manifest.steps.map((step: { id: string }) => step.id)).toEqual([...COLLECT_KINDS]);
+      expect(manifest.steps.map((step: { id: string }) => step.id)).toEqual([...Array(4).fill("inspect"), ...COLLECT_KINDS]);
+      expect(manifest.steps.filter((s: { id: string }) => s.id === "inspect").map((s: { biz_id: string }) => s.biz_id)).toEqual(["a", "b", "c", "d", "e"]);
       expect(manifest.steps.find((step: { id: string }) => step.id === "tenant").status).toBe("partial");
     }
     const output = join(root, "overview.html");
@@ -81,14 +83,15 @@ test.each([1, 2])("overview with collect concurrency %i delivers same-named arti
     const index = readBundleIndex(archive, "overview");
     expect(index.source.command).toBe("collect");
     const executions = readBundleExecutions(archive, "overview");
-    expect(executions).toHaveLength(COLLECT_KINDS.length + 1);
+    expect(executions).toHaveLength(COLLECT_KINDS.length + 5);
     expect(new Set(executions.map(entry => entry.manifest.id)).size).toBe(executions.length);
     expect(new Set(executions.map(entry => entry.path)).size).toBe(executions.length);
-    for (const kind of ["inspect", "tenant", "data"]) expect(executions.filter(entry => entry.manifest.source.command === kind)).toHaveLength(1);
+    expect(executions.filter(entry => entry.manifest.source.command === "inspect")).toHaveLength(5);
+    for (const kind of ["tenant", "data"]) expect(executions.filter(entry => entry.manifest.source.command === kind)).toHaveLength(1);
     const manifest = JSON.parse(readBundleText(archive, "overview/collection.json"));
     expect(manifest.target.biz_ids).toEqual(["a", "b", "c", "d", "e"]);
     const diagnosis = JSON.parse(readBundleText(archive, `overview/${index.files.diagnosis!.path}`));
-    expect(diagnosis.steps.map((step: { kind: string }) => step.kind)).toEqual([...COLLECT_KINDS]);
+    expect(diagnosis.steps.map((step: { kind: string }) => step.kind)).toEqual([...Array(4).fill("inspect"), ...COLLECT_KINDS]);
     for (const step of diagnosis.steps) {
       const evidence = executions.find(entry => entry.manifest.id === step.result.id)!;
       expect(evidence.manifest.source.command).toBe(step.kind);
