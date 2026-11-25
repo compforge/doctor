@@ -103,7 +103,8 @@ test("cat saves bounded binary evidence and propagates partial status through co
     expect(request.method).toBe("GET");
     return new Response(new Uint8Array([0, 255, 2, 3, 4, 5, 6, 7, 8, 9]), { headers: { "content-length": "10" } });
   });
-  const resolve = spyOn(providers, "resolveS3Provider").mockResolvedValue({ client: fixture.client, prepareWire: async () => { throw new Error("unexpected wire probe"); }, identity: {
+  const resolve = spyOn(providers, "resolveS3Provider").mockResolvedValue({ client: fixture.client, dataSource: undefined,
+    prepareWire: async () => { throw new Error("unexpected wire probe"); }, identity: {
     service: "svc", dataSource: "files", description: undefined, endpoint: fixture.target.endpoint, region: "us-east-1",
     addressStyle: "path", configuredBucket: "bucket", configuredPrefix: undefined, source: "plugin", namespace: "test", pod: undefined, container: undefined,
     channel: "plugin", executionLocation: "doctor-host",

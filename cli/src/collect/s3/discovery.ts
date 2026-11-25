@@ -80,6 +80,16 @@ export async function selectInspectProvider(context: CommandContext, input: S3In
       useLogger("s3").warn(`${target.namespace}/${target.service}/${target.id} 配置不可用`);
     }
   }
-  const choice = await chooseParameter("S3 目标（可用 -n、-s、--data-source 指定）", [...choices.keys()], canPrompt(input));
+  const first = choices.values().next().value;
+  const sourceId = first?.dataSource?.id();
+  // @rule One resolved data source can address several buckets. Skip selection only for the same probe scope.
+  const bucket = request.bucket ?? first?.identity.configuredBucket;
+  if (first && sourceId && choices.size > 1 && [...choices.values()].every(provider =>
+    provider.dataSource?.id() === sourceId && (request.bucket ?? provider.identity.configuredBucket) === bucket)) {
+    const { namespace, service, dataSource } = first.identity;
+    useLogger("s3").info(`发现 ${choices.size} 个候选指向同一 S3 探测目标，使用 ${namespace}/${service}/${dataSource}。`);
+    return first;
+  }
+  const choice = await chooseParameter("探测哪个服务使用的 S3 endpoint（可用 -n、-s、--data-source 指定）", [...choices.keys()], canPrompt(input));
   return choices.get(choice)!;
 }
