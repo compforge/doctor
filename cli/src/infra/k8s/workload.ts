@@ -14,6 +14,8 @@ export interface DiscoveredKubernetesWorkload {
   pods: KubernetesPod[];
   podNodes?: Record<string, string>;
   unavailableReason?: string;
+  reasonCode?: string;
+  sourceCode?: string | number;
 }
 
 /**
@@ -46,13 +48,17 @@ export async function discoverKubernetesResourceWorkload(
   const pods = new Map<string, KubernetesPod>();
   const podNodes: Record<string, string> = {};
   let service: KubernetesService | undefined;
+  let failedRead: KubernetesResourceCapture | undefined;
   try {
     const read = async <T extends Resource | ResourceList>(query: ResourceRef | ResourceListQuery): Promise<T> => {
       const { namespace: ns = selectedNamespace, resource } = query;
       const name = "name" in query ? query.name : undefined;
       const capture = await reader(query);
       recordCapture(capture);
-      if (capture.error || !capture.value) throw new Error(capture.error ?? "Resource response missing");
+      if (capture.error || !capture.value) {
+        failedRead = capture;
+        throw new Error(capture.error ?? "Resource response missing");
+      }
       const raw = capture.value as T;
       const list = JSON.stringify(name ? { items: [raw] } : raw);
       if (resource === "pods") {
@@ -73,6 +79,7 @@ export async function discoverKubernetesResourceWorkload(
   } catch (error) {
     signal?.throwIfAborted();
     return { definition, service, pods: [], instances: [],
-      unavailableReason: error instanceof Error ? error.message : String(error) };
+      unavailableReason: error instanceof Error ? error.message : String(error),
+      reasonCode: failedRead?.reasonCode, sourceCode: failedRead?.sourceCode };
   }
 }

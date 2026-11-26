@@ -1,3 +1,4 @@
+import { acquisitionFailure } from "../../../command/diagnostic";
 import { validateWorkloadProbeResult } from "@compforge/doctor-plugin";
 import { recordExecutionFailure } from "../../../command/execution-scope";
 import type {
@@ -31,22 +32,25 @@ export function makePluginWorkloadProbe(
   };
   return {
     id,
-    evaluate: (facts) => targets(facts).length
-      ? PROBE_RUNNABLE
-      : probeUnavailable(`${service.name}/${declaration.workload} 当前没有可探测的 Pod Instance`),
-    onUnavailable: (ctx, reason) => ctx.bundle.addStep({
+    evaluate: facts => {
+      if (facts.serviceTargets.status !== "collected") return probeUnavailable(facts.serviceTargets.reason);
+      const runtime = facts.serviceTargets.services[service.name]?.workloads[declaration.workload]?.podRuntime;
+      if (runtime && runtime.status !== "collected") return probeUnavailable(runtime.reason);
+      return runtime?.pods.length ? PROBE_RUNNABLE : probeUnavailable(`${service.name}/${declaration.workload} 当前没有可探测的 Pod Instance`);
+    },
+    onUnavailable: (ctx, reason) => ctx.bundle.addResult({
       id,
       title: `${service.name}/${declaration.workload} · ${declaration.id}`,
       risk: "observe",
       status: "unavailable",
       reason,
     }),
-    onFailed: (ctx, reason) => ctx.bundle.addStep({
+    onFailed: (ctx, reason, error) => ctx.bundle.addResult({
       id,
       title: `${service.name}/${declaration.workload} · ${declaration.id}`,
       risk: "observe",
       status: "unavailable",
-      reason,
+      ...acquisitionFailure(error ?? reason),
     }),
     run: async (ctx, facts, config) => {
       const managed = await openPluginContext(ctx.executor, config.kube, {
@@ -59,8 +63,12 @@ export function makePluginWorkloadProbe(
         const definition = service.workloads.find((item) => item.name === declaration.workload)!;
         const observations: PluginWorkloadObservation[] = [];
         for (const pod of targets(facts)) {
-          if (managed.signal.aborted) break;
           const stepId = `${id}-${pod.pod}`;
+          const title = `${service.name}/${declaration.workload}/${pod.pod} · ${declaration.id}`;
+          if (managed.signal.aborted) {
+            ctx.bundle.addResult({ id: stepId, title, risk: "observe", status: "skipped", reasonCode: "cancelled", reason: "采集已取消" });
+            continue;
+          }
           const startedAt = Date.now();
           try {
             const observed = await invokeExtension(declaration, managed, {
@@ -91,9 +99,9 @@ export function makePluginWorkloadProbe(
               summary: encoded.summary,
             };
             observations.push(observation);
-            ctx.bundle.addStep({
+            ctx.bundle.addResult({
               id: stepId,
-              title: `${service.name}/${declaration.workload}/${pod.pod} · ${declaration.id}`,
+              title,
               risk: "observe",
               status: result.status,
               ...(result.status !== "ok" ? { reason: result.reason } : {}),
@@ -102,13 +110,12 @@ export function makePluginWorkloadProbe(
             });
           } catch (error) {
             recordExecutionFailure(error, { phase: "plugin-workload", target: stepId, startedAt });
-            if (managed.signal.aborted) break;
-            ctx.bundle.addStep({
+            ctx.bundle.addResult({
               id: stepId,
-              title: `${service.name}/${declaration.workload}/${pod.pod} · ${declaration.id}`,
+              title,
               risk: "observe",
               status: "unavailable",
-              reason: error instanceof Error ? error.message : String(error),
+              ...(managed.signal.aborted ? { reasonCode: "cancelled", reason: "采集已取消" } : acquisitionFailure(error)),
             });
           }
         }

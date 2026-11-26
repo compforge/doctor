@@ -184,7 +184,8 @@ async function prepareLogBatch(
     const declarations = Object.fromEntries(services.map(name => [name,
       scope && (automatic || scope.gaps.length) && !scope.owners.has(name) ? [] : catalog.find(name)!.workloads]));
     const workloads = Object.fromEntries(Object.entries(declarations).map(([name, targets]) => [name, targets.map(w => w.name)]));
-    return { declarations, workloads, summaries: scope?.summaries, gaps: scope?.gaps ?? [] };
+    const summaries = scope && Object.fromEntries(scope.results.map(result => [`${result.service}/${result.provider}`, result.summary]));
+    return { declarations, workloads, summaries, gaps: scope?.gaps.map(gap => gap.reason) ?? [] };
   });
   for (const selection of selections) for (const gap of selection.gaps) useLogger("collect:log").warn(gap);
 

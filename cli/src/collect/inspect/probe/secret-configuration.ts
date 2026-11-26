@@ -1,3 +1,4 @@
+import { acquisitionFailure } from "../../../command/diagnostic";
 import type { ServiceSecretDataSource } from "@compforge/doctor-plugin";
 import { openPluginContext } from "../../../plugin/context";
 import { PROBE_RUNNABLE, type Probe } from "../../protocol";
@@ -14,6 +15,7 @@ export function makeSecretConfigurationProbe(service: string, source: ServiceSec
         producer: { origin: "core", id: "secret-configuration" }, service, dataSource: source.id,
         keys: source.keys, status: "unavailable", values: {}, missingKeys: [],
       };
+      let failure: ReturnType<typeof acquisitionFailure> | undefined;
       const started = performance.now();
       try {
         const context = await openPluginContext(ctx.executor, ctx.config.kube, {
@@ -27,12 +29,13 @@ export function makeSecretConfigurationProbe(service: string, source: ServiceSec
         } finally { await context.dispose(); }
       } catch (error) {
         ctx.command.signal.throwIfAborted();
-        observation.reason = `读取 Secret 配置失败：${service}/${source.id}（${error instanceof Error ? error.message : String(error)}）`;
+        failure = acquisitionFailure(error);
+        observation.reason = `读取 Secret 配置失败：${service}/${source.id}（${failure.reason}）`;
       }
       ctx.log(`[collect] Secret 配置 ${service}/${source.id}：${observation.status}，${Object.keys(observation.values).length} 个 key 已采集，${observation.missingKeys.length} 个 key 不存在`);
-      ctx.bundle.addStep({ id, title: `${service}/${source.id} Secret 配置`, risk: "observe",
+      ctx.bundle.addResult({ id, title: `${service}/${source.id} Secret 配置`, risk: "observe",
         status: observation.status === "collected" ? "ok" : "unavailable", reason: observation.reason,
-        durationMs: performance.now() - started, output: JSON.stringify(observation, null, 2), ext: "json" });
+        reasonCode: failure?.reasonCode, sourceCode: failure?.sourceCode, durationMs: performance.now() - started, output: JSON.stringify(observation, null, 2), ext: "json" });
       return [observation];
     },
   };

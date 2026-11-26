@@ -29,7 +29,7 @@ export function makeServiceConfigProbe(
     evaluate: (facts) => targetFromFacts(facts, target)
       ? PROBE_RUNNABLE
       : probeUnavailable(`${target.service}/${target.workload}/${target.deployment} 不在 Inspect 确认的采集目标中`),
-    onUnavailable: (ctx, reason) => ctx.bundle.addStep({
+    onUnavailable: (ctx, reason) => ctx.bundle.addResult({
       id,
       title: `${target.service}/${target.deployment} Env 配置`,
       risk: "observe",
@@ -52,7 +52,7 @@ export function makeServiceConfigProbe(
         container: target.container,
         values: resolved.values,
       };
-      ctx.bundle.addStep({
+      ctx.bundle.addResult({
         id,
         title: `${target.service}/${target.deployment} Env 配置`,
         risk: "observe",

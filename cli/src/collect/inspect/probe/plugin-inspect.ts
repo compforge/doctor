@@ -1,3 +1,4 @@
+import { acquisitionFailure } from "../../../command/diagnostic";
 import { validateProbeResult, type ServiceDefinition, type ServiceEvidenceFact, type InspectProbeExtension } from "@compforge/doctor-plugin";
 import { recordExecutionFailure } from "../../../command/execution-scope";
 import { invokeExtension } from "../../../plugin/extension";
@@ -11,8 +12,10 @@ export function makePluginInspectProbe(service: ServiceDefinition, declaration: 
   probeFacts: readonly ServiceEvidenceFact[]): Probe<InspectObservation, InspectFacts, InspectConfig, InspectCommandContext> {
   const id = `plugin-inspect-${service.name}-${declaration.id}`;
   const title = `${service.name} · ${declaration.id}`;
-  const unavailable = (ctx: InspectCommandContext, reason: string) => ctx.bundle.addStep({ id, title, risk: "observe", status: "unavailable", reason });
-  return { id, evaluate: () => PROBE_RUNNABLE, onUnavailable: unavailable, onFailed: unavailable,
+  const unavailable = (ctx: InspectCommandContext, reason: string) => ctx.bundle.addResult({ id, title, risk: "observe", status: "unavailable", reason });
+  return { id, evaluate: () => PROBE_RUNNABLE, onUnavailable: unavailable, onFailed: (ctx, reason, error) => ctx.bundle.addResult({
+      id, title, risk: "observe", status: "unavailable", ...acquisitionFailure(error ?? reason),
+    }),
     run: async (ctx, _facts, config) => {
       const managed = await openPluginContext(ctx.executor, config.kube, {
         config: ctx.command.profile.pluginConfig, signal: ctx.command.signal,
@@ -31,7 +34,7 @@ export function makePluginInspectProbe(service: ServiceDefinition, declaration: 
           observationKind: declaration.produces.kind, observationSchemaVersion: declaration.produces.schemaVersion,
           value: encoded.value, summary: encoded.summary,
         };
-        ctx.bundle.addStep({ id, title, risk: "observe", status: observation.status, reason: observation.reason,
+        ctx.bundle.addResult({ id, title, risk: "observe", status: observation.status, reason: observation.reason,
           output: JSON.stringify(observation, null, 2), ext: "json" });
         ctx.log(`[inspect] ${title}: ${result.status}`);
         return [observation];

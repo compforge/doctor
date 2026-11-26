@@ -1,3 +1,4 @@
+import { DoctorError } from "@compforge/doctor-plugin";
 import { ToolboxError } from "@compforge/harness-toolbox/errors";
 
 /** Credentials and signed URLs never belong in reusable diagnostic evidence. */
@@ -14,6 +15,20 @@ export function diagnosticMessage(error: unknown, secrets: readonly string[] = [
   for (const secret of secrets.filter(Boolean).sort((a, b) => b.length - a.length)) text = text.replaceAll(secret, "[redacted]");
   text = text.replace(/(authorization|proxy-authorization|cookie|set-cookie|x-api-key):[^\r\n]*/gi, "$1: [redacted]");
   return text.replace(/(["']?(?:password|passwd|token|access_token|api[_-]?key|secret)["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;}]+)/gi, "$1[redacted]");
+}
+
+/** Keep the acquisition reason independent of the transport-specific status and human-readable text. */
+export function acquisitionFailure(error: unknown) {
+  const reason = diagnosticMessage(error);
+  if (error instanceof ToolboxError) {
+    const codes: Partial<Record<ToolboxError["kind"], string>> = { permission_denied: "forbidden", authentication_failed: "unauthenticated",
+      resource_not_found: "not_found" };
+    const reasonCode = codes[error.kind] ?? error.kind;
+    return { reason, reasonCode, sourceCode: error.code };
+  }
+  const reasonCode = error instanceof DoctorError && error.code ? error.code
+    : error instanceof SyntaxError ? "invalid_response" : "operation_failed";
+  return { reason, reasonCode };
 }
 
 export interface ExecutionDiagnostic {

@@ -67,6 +67,7 @@ export async function runProbes<Observation extends ObservationMeta, Facts, Conf
   const results = new Map<string, UpstreamProbeResult<Observation>>();
   const observations: Observation[] = [];
 
+  let interrupted: string | undefined;
   while (pending.size > 0) {
     if (signal?.aborted) break;
     const probe = probes.find((candidate) => {
@@ -108,10 +109,10 @@ export async function runProbes<Observation extends ObservationMeta, Facts, Conf
       probeObservations = await probe.run(ctx, facts, config, progress);
     } catch (error) {
       recordExecutionFailure(error, { phase: "probe", target: probe.id, startedAt, kind: signal?.aborted ? "cancelled" : undefined });
-      if (signal?.aborted) break;
+      if (signal?.aborted) { interrupted = probe.id; break; }
       if (!probe.onFailed) throw error;
       const reason = error instanceof Error ? error.message : String(error);
-      probe.onFailed(ctx, reason);
+      probe.onFailed(ctx, reason, error);
       log(`[collect] Probe 失败：${probe.id}（${reason}）`);
       results.set(probe.id, { probeId: probe.id, status: "failed", reason, observations: [] });
       pending.delete(probe.id);
@@ -127,5 +128,8 @@ export async function runProbes<Observation extends ObservationMeta, Facts, Conf
     completed.add(probe.id);
   }
 
+  if (signal?.aborted) {
+    for (const probe of probes) if (pending.has(probe.id)) probe.onCancelled?.(ctx, probe.id === interrupted);
+  }
   return observations;
 }

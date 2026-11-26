@@ -18,9 +18,13 @@ export function evaluateCollectOutcome(
   delivery: CollectDeliveryStatus = "complete",
 ): CollectOutcome {
   const requested = requirements.filter(status => status !== "unnecessary" && status !== "skipped");
-  const available = requested.filter(status => status === "ok" || status === "partial").length;
-  const evidence: CollectEvidenceStatus = requested.every(status => status === "ok") ? "complete"
-    : available ? "partial" : "missing";
+  return collectEvidenceOutcome(requested.map(status => status === "ok" ? "complete" : status === "partial" ? "partial" : "missing"), delivery);
+}
+
+/** Reduce the answers to requested questions, including required items that never ran. */
+export function collectEvidenceOutcome(items: readonly CollectEvidenceStatus[], delivery: CollectDeliveryStatus = "complete"): CollectOutcome {
+  const evidence = items.every(item => item === "complete") ? "complete"
+    : items.some(item => item !== "missing") ? "partial" : "missing";
   return {
     delivery,
     evidence,

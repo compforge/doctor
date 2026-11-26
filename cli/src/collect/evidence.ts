@@ -4,6 +4,7 @@
 //   <dir>/raw/NN-<id>.*   每步原始 stdout（stderr 非空时并入，带分隔标记）
 //   <dir>/summary.md      规则层事实摘要——给人看
 // 原则：失败步骤也留上下文；原始证据与结论分开（分析产物后续单独落 analysis.md，不覆盖事实）。
+import type { CollectEvidenceStatus } from "./outcome";
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { OperationRisk } from "../command/approval";
@@ -22,6 +23,8 @@ export interface StepInput {
   status: StepStatus;
   /** partial/failed/skipped/unavailable 时的原因（降级原因也算证据） */
   reason?: string;
+  reasonCode?: string;
+  sourceCode?: string | number;
   command?: string[];
   reused?: boolean;
   observedAt?: string;
@@ -41,7 +44,10 @@ export interface StepRecord {
   title: string;
   risk: StepRisk;
   status: EvidenceStatus;
+  evidence?: CollectEvidenceStatus;
   reason?: string;
+  reason_code?: string;
+  source_code?: string | number;
   command?: string[];
   reused?: boolean;
   observed_at?: string;
@@ -84,6 +90,7 @@ export interface CollectionMeta {
   /** Domain evidence entrypoints, relative to this artifact directory. */
   files?: Readonly<Record<string, string>>;
   doctorVersion: string;
+  evidence?: CollectEvidenceStatus;
   kubectlVersion?: string;
   target: Record<string, unknown>;
   /** Command 选入 Evidence 的可持久化、已脱敏领域 Facts；与 Probe Observations 分开存放。 */
@@ -128,8 +135,13 @@ export class EvidenceBundle {
     return this.record(input);
   }
 
+  /** @spec A required item that was skipped remains missing; optional steps have no evidence obligation. */
+  addResult(input: StepInput): StepRecord {
+    return this.record(input, input.status === "ok" ? "complete" : input.status === "partial" ? "partial" : "missing");
+  }
+
   /** @spec Step IDs remain unchanged in evidence; raw filenames are single safe path components. */
-  private record(input: Omit<StepInput, "status"> & { status: EvidenceStatus }): StepRecord {
+  private record(input: Omit<StepInput, "status"> & { status: EvidenceStatus }, evidence?: CollectEvidenceStatus): StepRecord {
     this.seq += 1;
     const record: StepRecord = {
       id: input.id,
@@ -137,6 +149,9 @@ export class EvidenceBundle {
       risk: input.risk,
       status: input.status,
       reason: input.reason,
+      evidence,
+      reason_code: input.reasonCode,
+      source_code: input.sourceCode,
       command: input.command,
       request: input.request,
       reused: input.reused,
@@ -230,6 +245,7 @@ export class EvidenceBundle {
     writeFileSync(join(this.dir, factsFile), `${JSON.stringify(meta.inspectionFacts, null, 2)}\n`, "utf-8");
     const collection = {
       files: { ...meta.files, facts: factsFile },
+      evidence: meta.evidence,
       doctor_version: meta.doctorVersion,
       kubectl_version: meta.kubectlVersion,
       target: meta.target,

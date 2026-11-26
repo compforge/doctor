@@ -32,6 +32,7 @@ export function makeInspectProbes(
     const extensions = (service?.extensions ?? []).filter(extension => extension.kind === INSPECT_PROBE_KIND)
       .map(extension => makePluginInspectProbe(service!, requireInspectProbeExtension(extension), probeFacts));
     const workloads = workloadProbeProviders(catalog, serviceName)
+      .filter(({ service, extension }) => !config.bizId || service.workloads.some(workload => workload.name === extension.workload))
       .map(({ service, extension }) => makePluginWorkloadProbe(service, extension, probeFacts));
     return [...extensions, ...workloads];
   });

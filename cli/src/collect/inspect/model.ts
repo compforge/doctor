@@ -113,7 +113,7 @@ export interface InspectWorkloadTargetFact {
   probes: string[];
   deployments: InspectDeploymentTarget[];
   unavailableDeployments: Array<{ deployment: string; reason: string }>;
-  podRuntime: Fact<{ pods: InspectPodRuntimeFact[] }, "inspect.workload-pods">;
+  podRuntime: Fact<{ pods: InspectPodRuntimeFact[] }, "inspect.workload-pods"> & { reasonCode?: string; sourceCode?: string | number };
 }
 
 export interface InspectServiceTargetFact {

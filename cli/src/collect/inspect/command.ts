@@ -1,7 +1,8 @@
+import { existsSync } from "node:fs";
 import { freezeTimeWindow, resolveTimeWindow } from "../time-window";
 import { prepareCommandRequirements } from "../../command/prepare";
 import { serializeEvidenceResult } from "../serialize";
-import { defineCommand, type CommandInput } from "../../command";
+import { CommandStatus, defineCommand, type CommandInput } from "../../command";
 import { commandOptions, type CommandHostOption } from "../../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../../command/plugin-command-capabilities";
 import { renderEvidence, writeEvidencePage } from "../../report/evidence";
@@ -29,6 +30,10 @@ export const inspectCommand = defineCommand<InspectInput, void>({
   render: async (context, result) => renderEvidence(context, result, {
     command: "inspect", title: "Inspect", scope: "环境 / Service",
     render: artifact => {
+      if ((result.status === CommandStatus.Failed || result.status === CommandStatus.Cancelled)
+          && !existsSync(context.path(artifact, "diagnosis.json"))) {
+        return writeEvidencePage(context, artifact, { title: "doctor inspect", summaryHtml: "" });
+      }
       const diagnosis = context.json<InspectDiagnosis>(artifact, "diagnosis.json");
       writeEvidencePage(context, artifact, { title: "doctor inspect",
         summaryHtml: buildInspectHtml(diagnosis), sections: buildInspectHtmlSections(diagnosis),
