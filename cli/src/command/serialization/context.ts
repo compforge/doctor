@@ -21,6 +21,7 @@ interface Node {
   pending?: Promise<Node>;
 }
 interface Session {
+  plugin?: import("@compforge/doctor-plugin").PluginDefinition;
   root: string;
   results: WeakMap<object, Map<object, Node>>;
   nodes: Node[];
@@ -36,8 +37,8 @@ export class SerializeContext {
 
   static async create<Input extends CommandInput, Output>(root: string, spec: Pick<CommandSpec<Input, Output>, "name" | "serialize">,
     result: CommandResult<Output>, onError?: Session["onError"],
-    summaryPresentation: Session["summaryPresentation"] = "evidence"): Promise<SerializeContext> {
-    const session: Session = { root, results: new WeakMap(), nodes: [], sources: new Map(), onError, summaryPresentation };
+    summaryPresentation: Session["summaryPresentation"] = "evidence", plugin?: Session["plugin"]): Promise<SerializeContext> {
+    const session: Session = { root, results: new WeakMap(), nodes: [], sources: new Map(), onError, summaryPresentation, plugin };
     const node = SerializeContext.node(session, spec, result, ".");
     const context = new SerializeContext(session, node, new Set([node]));
     node.pending = context.run(spec, result);
@@ -60,6 +61,7 @@ export class SerializeContext {
   }
 
   get directory(): string { return join(this.session.root, this.node.path); }
+  get plugin(): Session["plugin"] { return this.session.plugin; }
   get root(): string { return this.session.root; }
   /** Root finish selects one presentation for the entire result tree; evidence is always serialized. */
   get includeEvidenceNavigation(): boolean { return this.session.summaryPresentation === "evidence"; }

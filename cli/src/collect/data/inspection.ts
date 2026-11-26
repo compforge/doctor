@@ -9,8 +9,8 @@ import type { DataProvider } from "./extensions";
 
 export function dataOutcomes(providers: readonly DataProvider[]): OutcomeDecl[] {
   return providers.flatMap(({ name, extension }) => [
-    ...(extension.expands?.length ? [{ id: `data-expand-${name}`, title: `${name} 业务 ID 扩展`, risk: "observe" as const }] : []),
-    { id: `data-provide-${name}`, title: `${name} 业务数据贡献`, risk: "observe" as const },
+    ...(extension.expands?.length ? [{ service: name, id: `data-expand-${name}`, title: `${name} 业务 ID 扩展`, risk: "observe" as const }] : []),
+    { service: name, id: `data-provide-${name}`, title: `${name} 业务数据贡献`, risk: "observe" as const },
   ]);
 }
 

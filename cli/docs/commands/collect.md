@@ -2,6 +2,12 @@
 
 ## 理念 / 概念
 
+**Collect 的交付目标是一份自描述的诊断归档。** 设想一个能解压和读取文件、第一次接触该产品的 AI，
+手头只有用户的原始问题和这份 `tar.gz`。它应能从包内了解本次采集的对象、时间和覆盖范围，
+按 Service 找到相关记录，借助采集时 Plugin 声明的知识和调用关系解释记录，并引用原始证据回答问题。
+如果当前材料不足以作答，它应能指出缺少哪条知识或现场证据，以及这会影响哪个判断。
+归档的[离线阅读入口](#按-service-离线阅读)应支持这一过程，无需依赖先前会话的记忆或访问原环境。
+
 `doctor collect [biz-id...]` 是 Inspect、Tenant、Data、Trace 和 Log 的集合命令。它只负责选择采集面、
 调用已有 collector，不拥有新的 Fact、Probe、Detector、业务 capability 或交付实现，也不改变任何
 具体命令的采集语义。
@@ -76,3 +82,19 @@ biz-id 的数据面组合使用 `doctor-collect-batch-<timestamp>.html/.tar.gz`�
 提供该 basename，最终路径与格式仍由统一 Delivery 决定；自动化调用可用 `--output` 指定稳定前缀。
 
 渲染契约与四种阅读场景见 [HTML 报告渲染](../report.md)。
+
+### 按 Service 离线阅读
+
+归档根 `summary.md` 展示查询范围、采集时间和 Service 目录。每个服务页
+`services/<service>/summary.md` 按来源列出本次记录、定位字段和采集缺口。
+服务归属来自采集者记录的 Service 或 Trace 节点的 Service 与 Catalog 名称、别名的匹配。
+批量输入共享的 Data 记录保留关联输入；跨服务 Trace 的各入口引用同一份原始文件。
+未取得服务归属的证据和命令级失败继续从命令导航、manifest 读取。
+
+服务页可附当前 Plugin 版本声明的 `knowledge.md`，产品级知识由各页引用同一份
+`knowledge/product.md`。知识解释术语、状态及服务关系，现场判断引用本包证据。
+有 Operation 声明时，`knowledge/operations.md` 按服务列出 Operation 和直接调用目标，
+保留服务内部调用。服务页按 `calls`（常规路径）与 `mayCalls`（条件路径）分列直接上游调用方、
+下游被调用方，同组内每个 Service 只展示一次。对端有证据页时可以直接跳转。
+这份静态声明可用于决定下一步看哪个服务，某次请求实际经过的路径由 Trace 或日志核实。
+根 `AGENTS.md` 在生成服务页时说明按 Service 查证的阅读顺序。

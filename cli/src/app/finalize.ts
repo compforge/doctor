@@ -1,8 +1,8 @@
 import { disposeWithinBudget } from "../command/deadline";
 import { executionDiagnostic } from "../command/diagnostic";
 import { writeOutput } from "../terminal/output";
-import { renderBundleAgents } from "./bundle-agents";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { renderBundleAgents, renderCollectBundleAgents } from "./bundle-agents";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type CommandContext, type CommandInput, type CommandResult, type Command } from "../command";
@@ -50,7 +50,8 @@ export async function finalizeCommand<Input extends CommandInput, Output>(input:
   progress("正在整理已有证据");
   const serialized = await SerializeContext.create(directory, input.spec, result,
     (error, command) => reportError(error, { context: command, summary: "result serialization failed" }),
-    input.delivery.format?.trim() === "summary" ? "result" : "evidence");
+    input.delivery.format?.trim() === "summary" ? "result" : "evidence",
+    input.context.pluginIdentity ? input.context.plugin : undefined);
   if (serialized.failed && code !== 130) code = 1;
   const renderer = new RenderContext(serialized.artifacts, input.context.profile.name,
     (error, command) => reportError(error, { context: command, summary: "report render failed" }));
@@ -69,7 +70,8 @@ export async function finalizeCommand<Input extends CommandInput, Output>(input:
     render: { status: renderer.failures.length ? "failed" : "ok",
       errors: renderer.failures.map(item => ({ command: item.command, reason: String(item.error) })) },
   });
-  serialized.writeText("AGENTS.md", renderBundleAgents());
+  const serviceNavigation = input.spec.name === "doctor collect" && existsSync(serialized.path("services"));
+  serialized.writeText("AGENTS.md", serviceNavigation ? renderCollectBundleAgents() : renderBundleAgents());
   serialized.indexReports();
   const delivered = await deliverSerialized({ directory, options: input.delivery, code,
     reportName: input.spec.reportName?.(input.commandInput, result, new Date())

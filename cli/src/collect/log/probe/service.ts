@@ -159,6 +159,7 @@ function recordPodLog(ctx: LogCommandContext, input: LogCaptureResult): void {
   const previousSuffix = input.previous ? "-previous" : "";
   const partial = capture.captureStatus === "partial";
   ctx.bundle.addStep({
+    service: input.service,
     id: `logs-${input.service}-${input.pod}-${input.container}${previousSuffix}`,
     title: input.previous
       ? `${input.pod}/${input.container} 上一次重启前日志`

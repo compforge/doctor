@@ -17,6 +17,7 @@ export type EvidenceStatus = StepStatus | OutcomeStatus;
 export type StepRisk = OperationRisk;
 
 export interface StepInput {
+  service?: string;
   id: string;
   title: string;
   risk: StepRisk;
@@ -40,6 +41,7 @@ export interface StepInput {
 }
 
 export interface StepRecord {
+  service?: string;
   id: string;
   title: string;
   risk: StepRisk;
@@ -68,6 +70,7 @@ export interface StepRecord {
  * 已足够时 = unnecessary；工序缺席 = skipped（这步没走）。
  */
 export interface OutcomeDecl {
+  service?: string;
   id: string;
   title: string;
   risk: StepRisk;
@@ -145,6 +148,7 @@ export class EvidenceBundle {
     this.seq += 1;
     const record: StepRecord = {
       id: input.id,
+      service: input.service,
       title: input.title,
       risk: input.risk,
       status: input.status,
@@ -195,7 +199,7 @@ export class EvidenceBundle {
     }
     this.pending.delete(id);
     this.filled.add(id);
-    return this.record({ id, title: decl.title, risk: decl.risk, ...result });
+    return this.record({ ...decl, ...result });
   }
 
   /**
@@ -215,9 +219,7 @@ export class EvidenceBundle {
       this.pending.delete(id);
       this.filled.add(id);
       this.addStep({
-        id: decl.id,
-        title: decl.title,
-        risk: decl.risk,
+        ...decl,
         status: "unavailable",
         reason,
       });
