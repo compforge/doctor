@@ -21,7 +21,11 @@ export interface CommandSpec<Input extends CommandInput, Output, Prepared = Inpu
   readonly name: string;
   /** Pure input validation, before Plugin loading, environment access and idempotent reuse. */
   readonly validate?: (input: Input) => void | Promise<void>;
-  /** Check requirements and bind this invocation's selection; undefined cancels before execution. */
+  /**
+   * @spec Resolve the configuration known before execution and return it with the bound dependencies in Prepared.
+   * A choice that depends on later evidence is settled before the action that needs it.
+   * Return undefined to cancel the invocation.
+   */
   prepare(context: CommandContext, input: Input): Promise<Prepared | undefined>;
   run(context: CommandContext, prepared: Prepared): Promise<CommandResult<Output>>;
   /** Root delivery derives a name from input and available output, including failed or cancelled results. */

@@ -6,10 +6,9 @@ import { buildCallgraph, collectMetrics, loadRun, rangeObservation, serviceMetri
 import { CommandInputError, CommandStatus, type CommandContext, type CommandResult } from "../command";
 import { useLogger } from "../terminal/log";
 import { diagnosticMessage } from "../command/diagnostic";
-import { openMetricDB } from "../datasource/metricdb";
+import type { openMetricDB } from "../datasource/metricdb";
 import { createPerfArtifact } from "./output";
-import { resolvePerfConfig } from "./config";
-import type { PerfCliOpts, PerfResult } from "./model";
+import type { PerfConfig, PerfResult } from "./model";
 
 export function perfMetricsComplete(run: Run): boolean {
   const queries = run.executions.flatMap(arm => arm.prometheus_observations ?? []);
@@ -61,7 +60,7 @@ function operationTrendWindows(probes: PrometheusProbe[], scrapes: readonly Serv
  * @link cli/docs/commands/perf.md
  */
 export async function preparePerfMetrics(operations: readonly Operation[], context: CommandContext,
-  source?: string | ReturnType<typeof openMetricDB>, services: readonly Pick<Service,"name"|"workloads"|"observes">[] = [],
+  connection: ReturnType<typeof openMetricDB> | undefined, services: readonly Pick<Service,"name"|"workloads"|"observes">[] = [],
   namespace?: string, scrapes: readonly ServiceScrapeCoverage[] = []): Promise<PreparedPerfMetrics> {
   const declared = operations.filter(operation => operation.observes?.some(item => item.type === "metricdb"));
   const targets = services.filter(service => service.workloads.length || service.observes?.some(item => item.type === "metricdb"));
@@ -72,7 +71,6 @@ export async function preparePerfMetrics(operations: readonly Operation[], conte
     return prepared;
   }
   try {
-    const connection = await (typeof source === "string" || source === undefined ? openMetricDB(context, source) : source);
     prepared.source = await connection?.reader.connectQuery(context.signal);
     if (!prepared.source) {
       missing("已声明观测指标，但未配置 metricdb（Prometheus/VM）；本轮仅保留运行窗口与已有请求事实");
@@ -186,10 +184,8 @@ export function formatMetricCoverageWarning(issues: readonly MetricIssue[]): str
 }
 
 /** @spec Declared observations are collected automatically; unavailable metrics cannot discard request facts or sibling observations. */
-export async function observePerf(run: Run, directory: string, operations: readonly Operation[],
-  context: CommandContext, url?: string, prepared?: PreparedPerfMetrics,
+export async function observePerf(run: Run, directory: string, plan: PreparedPerfMetrics, signal: AbortSignal,
 ): Promise<Pick<PerfResult, "metricsComplete" | "metricIssues">> {
-  const plan = prepared ?? await preparePerfMetrics(operations, context, url);
   if (!plan.declared) {
     const observationOnly = run.executions.every(arm => observesOnly(arm.arm.load));
     return { metricsComplete: !observationOnly, metricIssues: observationOnly ? ["本次仅记录观测窗口。要获取指标，请声明 observes 或 Service 的 Kubernetes Workload。"] : [] };
@@ -201,7 +197,7 @@ export async function observePerf(run: Run, directory: string, operations: reado
       planMetrics(run, plan.probes, plan.source);
       writeRunData(run, directory);
       useLogger("perf").info(`请求与查询计划已保存；自动查询 ${plan.probes.length} 组指标`);
-      await collectPerfMetrics(run, directory, plan.source, context.signal);
+      await collectPerfMetrics(run, directory, plan.source, signal);
       const gaps = perfMetricIssues(run);
       metricIssues.push(...gaps.map(gap => gap.message));
       if (gaps.length) useLogger("perf").warn(formatMetricCoverageWarning(gaps));
@@ -212,19 +208,18 @@ export async function observePerf(run: Run, directory: string, operations: reado
 }
 
 /** Offline replay only reads saved facts; it never resolves a Plugin, runner or metric source. */
-export async function replayPerf(opts: PerfCliOpts, context: CommandContext): Promise<CommandResult<PerfResult>> {
-  const config = resolvePerfConfig(opts);
-  const metadataPath = join(opts.from!, "perf.json");
+export async function replayPerf(from: string, config: PerfConfig, context: CommandContext): Promise<CommandResult<PerfResult>> {
+  const metadataPath = join(from, "perf.json");
   let metadata;
   if (existsSync(metadataPath)) {
     try { metadata = JSON.parse(readFileSync(metadataPath, "utf8")); }
     catch (error) { throw new CommandInputError(`无法读取 ${metadataPath}：${diagnosticMessage(error)}`); }
     if (!metadata || metadata.schema !== 1) throw new CommandInputError(`Unsupported Doctor Perf metadata schema: ${metadataPath}`);
   }
-  const run = loadRun(opts.from!);
+  const run = loadRun(from);
   run.case_entries ??= metadata?.caseEntries;
   const artifact = createPerfArtifact(config);
-  cpSync(opts.from!, artifact.path, { recursive: true });
+  cpSync(from, artifact.path, { recursive: true });
   context.artifacts.add({ command: "perf", path: artifact.path });
   const metricsComplete = metadata?.metricsComplete ?? perfMetricsComplete(run);
   return { status: context.signal.aborted ? CommandStatus.Cancelled

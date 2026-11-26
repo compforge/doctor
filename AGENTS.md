@@ -105,7 +105,8 @@ Core 与 Plugin 共用的基础设施由 Quality Harness 的 `@compforge/harness
 
 ## 全局配置优先级
 
-所有 Command 逐项按 **CLI 显式参数 > 当前 profile 配置 > 默认值** 选择有效值。覆盖只作用于本次调用。
+所有 Command 逐项按 **CLI 显式参数 > 当前 profile 配置 > 默认值** 选择有效值。每个 Command 的 `prepare` 负责明确、汇总执行前可以确定的配置，复用宿主已解析的值。
+依赖现场信息的交互可延至相关动作前，用户在交互中明确选择的值优先。领域 run 消费已确定的值与访问能力。
 选定来源后，校验或访问失败就报告该来源的错误。参数来源识别、目标展示和 Kubernetes 解析示例见[配置与目标](cli/docs/configuration.md)。
 
 ## 文档归属

@@ -7,7 +7,7 @@ import { graphFromServices, type Operation } from "@compforge/harness-common";
 import { Engine, writeRunData, type CaseMixEntry, type CaseSet, type Outcome, type Run, type Experiment } from "@compforge/perf-harness";
 import { inspectMetricBaseline, metricBaselineAdvice } from "./quality";
 import { probePerfScrape, scrapeAdvice, scrapeGroupSummary, type RawScrape, writeScrapeFile } from "./scrape";
-import { openMetricDB } from "../datasource/metricdb";
+import type { openMetricDB } from "../datasource/metricdb";
 import { observePerf, preparePerfMetrics } from "./observations";
 import { PerfProgress, formatPerfSummary } from "./progress";
 import { discoverTenantDirectory } from "../plugin/tenant-directory";
@@ -26,7 +26,7 @@ import { resolveApprovalGate } from "../terminal/approval";
 import { promptListedChoice } from "../terminal/selection";
 import { resolvePerfConfig, perfLoadPlans } from "./config";
 import type { PerfCliOpts, PerfResult, PerfConfig } from "./model";
-import { createPerfArtifact, writePerfMetadata } from "./output";
+import { createPerfArtifact, writePerfMetadata, type PerfMetadata } from "./output";
 
 export * from "./config";
 export * from "./model";
@@ -129,32 +129,29 @@ async function selectParameters(opts: PerfCliOpts, config: PerfConfig): Promise<
 }
 
 /** Natural traffic observation requires only Operation declarations. */
-export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, context: CommandContext): Promise<CommandResult<PerfResult>> {
-  const config = resolvePerfConfig(opts);
-  if (!await selectParameters(opts, config)) return {status:CommandStatus.Cancelled, artifacts:[]};
+export async function prepareLivePerf(opts: PerfCliOpts, config: PerfConfig, plugin: PluginDefinition,
+  context: CommandContext, client: ReturnType<typeof openMetricDB>) {
+  if (!await selectParameters(opts, config)) return;
   const target = await selectPerfTarget(plugin, opts, config.qps > 0);
-  if (!target) return {status:CommandStatus.Cancelled, artifacts:[]};
+  if (!target) return;
   const namespace = resolveCollectNamespace(opts, context.profile).namespace;
-  const client = openMetricDB(context, opts.prometheus);
   const raw: RawScrape = {};
   const scrape = await probePerfScrape(context, target.service, namespace, client, raw, opts, plugin.services.services);
-  if (scrape) {
-    if (scrape.discoveredCollector) useLogger("perf").info(`已核对采集器 ${scrape.discoveredCollector} 的 active targets`);
-    for (const group of scrape.groups) useLogger("perf").info(scrapeGroupSummary(group));
-    if (scrape.recommendedHoldSeconds) {
-      useLogger("perf").info(`按匹配到的最长抓取间隔，建议 hold 至少 ${scrape.recommendedHoldSeconds}s（4 个周期）`);
-      if (opts.hold === undefined) config.holdSeconds = Math.max(config.holdSeconds, scrape.recommendedHoldSeconds);
-    }
-    for (const advice of scrapeAdvice(scrape)) useLogger("perf").warn(advice);
+  if (scrape.discoveredCollector) useLogger("perf").info(`已核对采集器 ${scrape.discoveredCollector} 的 active targets`);
+  for (const group of scrape.groups) useLogger("perf").info(scrapeGroupSummary(group));
+  if (scrape.recommendedHoldSeconds) {
+    useLogger("perf").info(`按匹配到的最长抓取间隔，建议 hold 至少 ${scrape.recommendedHoldSeconds}s（4 个周期）`);
+    if (opts.hold === undefined) config.holdSeconds = Math.max(config.holdSeconds, scrape.recommendedHoldSeconds);
   }
+  for (const advice of scrapeAdvice(scrape)) useLogger("perf").warn(advice);
   if (opts.hold === undefined && isInteractive()) {
     const hold = await promptListedChoice({question: `hold 观测秒数（默认 ${config.holdSeconds}，q 取消）：`,
       emptyValue: config.holdSeconds, invalidMessage: "请输入大于 0 的秒数。",
       match: value => Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : undefined});
-    if (hold === undefined) return {status:CommandStatus.Cancelled, artifacts:[]};
+    if (hold === undefined) return;
     config.holdSeconds = hold;
   }
-  if (scrape?.recommendedHoldSeconds && config.holdSeconds < scrape.recommendedHoldSeconds) {
+  if (scrape.recommendedHoldSeconds && config.holdSeconds < scrape.recommendedHoldSeconds) {
     useLogger("perf").warn(`当前 hold ${config.holdSeconds}s 短于建议值 ${scrape.recommendedHoldSeconds}s，窗口内样本可能不足。`);
   }
   const {operation} = target;
@@ -166,9 +163,9 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
   const loads = perfLoadPlans(config);
   const declarations = plugin.services.operations().map(item => item.operation);
   const preparedMetrics = await preparePerfMetrics(declarations, context, client,
-    plugin.services.services, namespace, scrape?.services);
+    plugin.services.services, namespace, scrape.services);
   const metricBaseline = await inspectMetricBaseline(preparedMetrics, config.holdSeconds, context.signal);
-  for (const coverage of scrape?.services ?? []) {
+  for (const coverage of scrape.services ?? []) {
     const interval = Math.max(0, ...coverage.groups.map(group => group.intervalSeconds ?? 0));
     if (interval * 4 > config.holdSeconds) useLogger("perf").warn(
       `${coverage.service}：最长抓取周期 ${interval}s，计划 hold ${config.holdSeconds}s；建议缩短该 job 的间隔或将实际 hold 延长至 ${4*interval}s。`);
@@ -186,9 +183,9 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
         `Case: ${Object.values(mix.caseRefs).join(", ")}；多 Case 等权随机抽取`,
         "真实业务请求可能写入数据、产生模型费用并增加下游压力；不设置请求总数上限",
         `错误率 ${(config.abortErrorRate*100).toFixed(0)}%（至少 ${config.breakerMinN} 个样本）熔断；Ctrl+C 结束观测并生成报告`]});
-    if (!approved.approved) return {status:CommandStatus.Cancelled, artifacts:[]};
+    if (!approved.approved) return;
     const kube = await resolveKubernetesCommandConfig(opts, undefined, context);
-    if (!kube) return {status:CommandStatus.Cancelled, artifacts:[]};
+    if (!kube) return;
     const executor = createKubernetesExecutor(kube);
     const environment = await resolveKubernetesEnvironment(executor);
     service = bindService(target.service, environment);
@@ -202,10 +199,10 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
         clients: context.clients, signal: context.signal, environment,
       }), { commandContext: context });
       const command = await prepareRunnerCommand(provider.factory, cases, rows, context, directory, "Perf");
-      if (!command) return {status:CommandStatus.Cancelled, artifacts:[]};
+      if (!command) return;
       for (const item of cases) {
         const render = await prepareCaseInput(item, rows, command);
-        if (!render) return {status:CommandStatus.Cancelled, artifacts:[]};
+        if (!render) return;
         inputs.set(item, render);
       }
       // Lazy access: Engine owns the setup boundary and QPS=0 never enters this factory.
@@ -221,23 +218,34 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
     }
     adapter = routePerfCases(mix, adapters, inputs);
   }
-  if (mix.caseSet) writeOutput(formatPerfCaseMix(mix.caseSet, mix.caseMix), process.stderr);
+  const metadata = {
+    scrape, metricBaseline, service: target.service.name, operation: operation.id(),
+    caseRefs: mix.caseRefs, caseEntries, caseFacets: mix.caseSet?.facets ?? {},
+    caseSource: mix.sources.length === 1 ? { service: target.service.name, source: mix.sources[0]!.sourceId! } : undefined,
+    caseIds: mix.caseMix.map(item => item.id),
+  } satisfies PerfMetadata;
+  const graph = graphFromServices(plugin.services.services.map(item => bindService(item, service.environment)), {
+    source:`declared:plugin/${plugin.id}`, version:plugin.version});
+  const experiment = { name: `doctor-${target.service.name}-perf`, service, graph: graph.toJSON(),
+    entryIds, caseSet: mix.caseSet, caseMix: mix.caseMix, loads };
+  return { config, experiment, adapter, contexts, metadata, raw, preparedMetrics };
+}
+
+export type PreparedLivePerf = NonNullable<Awaited<ReturnType<typeof prepareLivePerf>>>;
+
+export async function runPerf(prepared: PreparedLivePerf, context: CommandContext): Promise<CommandResult<PerfResult>> {
+  const { config, experiment, adapter, contexts, metadata, raw, preparedMetrics } = prepared;
+  if (experiment.caseSet) writeOutput(formatPerfCaseMix(experiment.caseSet, experiment.caseMix), process.stderr);
   const artifact = createPerfArtifact(config), outputDir = artifact.path;
   context.artifacts.add({command:"perf", path:outputDir});
-  const metadata = {scrape, metricBaseline, service:target.service.name, caseRefs:mix.caseRefs, caseEntries, caseSource:mix.sources.length === 1 ? {service:target.service.name, source:mix.sources[0]!.sourceId!} : undefined, operation:operation.id(),
-    caseFacets:mix.caseSet?.facets ?? {}, caseIds:mix.caseMix.map(item => item.id)};
   if (raw.configYaml !== undefined) writeScrapeFile(outputDir, "config.yaml", raw.configYaml);
   if (raw.targets) writeScrapeFile(outputDir, "targets.json", raw.targets);
   writePerfMetadata(outputDir, metadata);
-  const graph = graphFromServices(plugin.services.services.map(item => bindService(item, service.environment)), {
-    source:`declared:plugin/${plugin.id}`, version:plugin.version});
   const progress = new PerfProgress();
   let run: Run | undefined, failure: unknown;
   try {
     try {
-      run = await new Engine({name:`doctor-${target.service.name}-perf`, service, graph:graph.toJSON(),
-        entryIds, ...progress.observe(adapter), caseSet:mix.caseSet,
-        caseMix:mix.caseMix, loads, signal:context.signal, stopSignal:progress.stop.signal,
+      run = await new Engine({...experiment, ...progress.observe(adapter), signal:context.signal, stopSignal:progress.stop.signal,
         onErrorRateStop: (snapshot, inflight) => progress.errorRateStopped(snapshot, inflight),
         onArmStart: () => {
           writeOutput(`[perf] 开始观测：注入 QPS=${config.qps}，${config.qps ? `max_inflight=${config.maxInflight}，` : ""}hold=${config.holdSeconds}s\n`, process.stderr);
@@ -245,7 +253,7 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
           progress.start(context);
         },
       }).run();
-      run.case_entries = caseEntries;
+      run.case_entries = metadata.caseEntries;
       if (!config.qps) run.case_ids = [];
     } catch (error) { failure = error; }
     finally {
@@ -257,8 +265,8 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
       if (context.signal.aborted) return {status:CommandStatus.Cancelled, artifacts:context.artifacts.list()};
       throw failure ?? new Error("Perf 未形成运行记录");
     }
-    const metrics = await observePerf(run, outputDir, declarations, context, opts.prometheus, preparedMetrics);
-    const caseCounts = Object.fromEntries(mix.caseMix.map(({id}) => [id, 0]));
+    const metrics = await observePerf(run, outputDir, preparedMetrics, context.signal);
+    const caseCounts = Object.fromEntries(experiment.caseMix.map(({id}) => [id, 0]));
     for (const arm of run.executions) {
       for (const request of arm.requests) if (request.dispatched_at !== undefined) {
         caseCounts[request.case_id] = (caseCounts[request.case_id] ?? 0) + 1;
@@ -268,6 +276,6 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
     writeOutput(formatPerfSummary(run, metrics.metricIssues), process.stderr);
     return {status:context.signal.aborted ? CommandStatus.Cancelled : failure || run.status !== "completed" || !metrics.metricsComplete ? CommandStatus.Partial : CommandStatus.Ok,
       reason:failure ? diagnosticMessage(failure) : undefined,
-      output:{run, outputDir, scrape, metricBaseline, ...metrics, caseFacets:mix.caseSet?.facets}, artifacts:context.artifacts.list()};
+      output:{run, outputDir, scrape:metadata.scrape, metricBaseline:metadata.metricBaseline, ...metrics, caseFacets:metadata.caseFacets}, artifacts:context.artifacts.list()};
   } finally { progress.dispose(); }
 }

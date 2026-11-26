@@ -110,22 +110,13 @@ async function probeDiscoveredCollector(reader: MetricDBClient, service: ScrapeS
 
 /** @spec Only active targets matched to this Service contribute to its four-interval hold recommendation. */
 export async function probePerfScrape(context: CommandContext, service: ScrapeService, namespace: string,
-  client: ReturnType<typeof openMetricDB>, raw?: RawScrape, opts: KubernetesCommandInput = {}, services: readonly ScrapeService[] = []): Promise<PerfScrape | undefined> {
+  client: ReturnType<typeof openMetricDB>, raw?: RawScrape, opts: KubernetesCommandInput = {}, services: readonly ScrapeService[] = []): Promise<PerfScrape> {
   const scrape: PerfScrape = {service: service.name, namespace, endpoint: "metricdb", groups: []};
   const signal = AbortSignal.any([context.signal, AbortSignal.timeout(5000)]);
-  let reader;
-  try {
-    const connection = await client;
-    if (!connection) return;
-    reader = connection.reader;
-    scrape.endpoint = reader.scrapeEndpoint;
-    scrape.metricdbUrl = reader.url;
-    scrape.collectorUrl = evidenceEndpoint(connection.configuredCollectorUrl ?? reader.url);
-  } catch (error) {
-    context.signal.throwIfAborted();
-    scrape.configError = scrape.targetsError = scrapeFailure(error, signal);
-    return scrape;
-  }
+  const { reader, configuredCollectorUrl } = client;
+  scrape.endpoint = reader.scrapeEndpoint;
+  scrape.metricdbUrl = reader.url;
+  scrape.collectorUrl = evidenceEndpoint(configuredCollectorUrl ?? reader.url);
   let [configs, targets] = await Promise.allSettled([
     reader.getScrapeConfig(signal, raw && (yaml => { raw.configYaml = yaml; })),
     // @why state=any includes dropped targets and can return tens of MiB. Archive the active probe itself.

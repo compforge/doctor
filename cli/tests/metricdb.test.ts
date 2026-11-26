@@ -4,8 +4,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../src/app/config/config";
 import { CommandContext } from "../src/command";
-import { openMetricDB } from "../src/datasource/metricdb";
+import { openMetricDB, resolveMetricDBConfig } from "../src/datasource/metricdb";
 import { probePerfScrape, scrapeAdvice } from "../src/perf/scrape";
+
+test("MetricDB selection binds credentials, dialect and collector to the query endpoint", () => {
+  const profile = { url: "https://metrics.example/select/1", kind: "victoriametrics" as const,
+    username: "reader", password: "fixture", collector: { url: "https://collector.example" } };
+  expect(resolveMetricDBConfig(profile)).toBe(profile);
+  expect(resolveMetricDBConfig(profile, profile.url + "/")).toBe(profile);
+  for (const url of ["https://other.example", "https://metrics.example/select/2"]) {
+    expect(resolveMetricDBConfig(profile, url)).toEqual({ url });
+  }
+  expect(() => resolveMetricDBConfig(profile, " ")).toThrow("--prometheus");
+});
 
 /** @case Explicit profile kind drives the Perf backend without capability guesses. */
 for (const kind of ["prometheus", "victoriametrics"] as const) test(`profile metricdb ${kind} applies authentication and backend query semantics`, async () => {
@@ -21,9 +32,9 @@ for (const kind of ["prometheus", "victoriametrics"] as const) test(`profile met
       ? {resultType:"matrix",result:[]} : {resultType:"vector",result:[]}});
   }});
   const context = new CommandContext({}, {name:"fixture",configPath:"",pluginConfig:{},value:{readonly:true,
-    metricdb:{url:"http://unused.invalid",kind,username:"doctor",password:"secret"}}});
+    metricdb:{url:server.url.toString(),kind,username:"doctor",password:"secret"}}});
   try {
-    const source = await (await openMetricDB(context, server.url.toString()))?.reader.connectQuery(context.signal);
+    const source = await openMetricDB(context, context.profile.value.metricdb!).reader.connectQuery(context.signal);
     expect(source?.kind).toBe(kind);
     expect(requests).toHaveLength(0);
     await source!.query("requests", 123.456, context.signal);
@@ -70,7 +81,7 @@ test("scrape inspection uses the collector's credentials and preserves target ev
       url:collector.url.toString(),username:"reader",password:"test",
     }}}});
   const service = {name:"api",workloads:[{name:"main",platform:"kubernetes",location:{kind:"service",name:"api-svc"}}]} as const;
-  const client = openMetricDB(context);
+  const client = openMetricDB(context, context.profile.value.metricdb!);
   try {
     const scrape = await probePerfScrape(context, service, "ns", client);
     expect(scrape).toMatchObject({endpoint:"collector",metricdbUrl:"http://unused.invalid",collectorUrl:collector.url.origin,
@@ -91,7 +102,7 @@ test("scrape evidence excludes a collector URL rejected for embedded credentials
     metricdb:{url:"http://metrics.invalid",collector:{url:"http://reader:fixture-secret@collector.invalid"}},
   }});
   try {
-    const scrape = await probePerfScrape(context, {name:"chat",workloads:[]}, "app", openMetricDB(context));
+    const scrape = await probePerfScrape(context, {name:"chat",workloads:[]}, "app", openMetricDB(context, context.profile.value.metricdb!));
     expect(scrape).toMatchObject({metricdbUrl:"http://metrics.invalid",endpoint:"collector",
       configError:"invalid_argument",targetsError:"invalid_argument"});
     expect(scrape?.collectorUrl).toBeUndefined();
@@ -174,7 +185,7 @@ test("vmselect fallback verifies the writer, tenant and active service, and leav
     users:[{name:"user",user:{token:"test"}}]}));
   const context = new CommandContext({}, {name:"test",configPath:"",pluginConfig:{},value:{readonly:true,
     metricdb:{url:query.url.origin + "/select/4/prometheus",username:"query",password:"private"}}});
-  const client = openMetricDB(context);
+  const client = openMetricDB(context, context.profile.value.metricdb!);
   const raw: import("../src/perf/scrape").RawScrape = {};
   const inspect = () => probePerfScrape(context,{name:"chat",workloads:[]}, "app",client,raw,{kubeconfig});
   try {
