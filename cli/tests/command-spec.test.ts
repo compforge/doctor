@@ -224,7 +224,7 @@ test("cleanup failures preserve staged artifacts and surface failure", async () 
   expect("reason" in result && result.reason).toContain("cleanup failed");
 });
 
-test("only the root delivers and cleans child artifacts, including partial results", async () => {
+test("interrupts during root finalize preserve partial results, delivery and successful exit", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-command-delivery-"));
   const output = join(root, "report.html");
   const previousExit = process.exitCode;
@@ -264,6 +264,8 @@ test("only the root delivers and cleans child artifacts, including partial resul
           dispose: async () => {
             expect(existsSync(join(root, "first", "evidence.html"))).toBe(true);
             expect(existsSync(join(root, "second", "evidence.html"))).toBe(true);
+            process.emit("SIGINT");
+            process.emit("SIGINT");
             resourceClosed = true;
           },
         })

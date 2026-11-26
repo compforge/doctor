@@ -7,7 +7,7 @@ async function httpStatus(connection: S3ProviderConnection, path: string): Promi
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5_000);
   try {
-    return (await connection.http.request(path, { signal: controller.signal })).status;
+    return (await connection.http.request(path, { signal: connection.signal ? AbortSignal.any([connection.signal, controller.signal]) : controller.signal })).status;
   } finally {
     clearTimeout(timer);
   }

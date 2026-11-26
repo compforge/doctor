@@ -47,12 +47,11 @@ async function executeCommand<Input extends CommandInput, Output>(
   try {
     const context = prepareCommand(opts, runtime.printProfile ?? true, runtime.plugin);
     input = withoutShadowedDefaults(input, context.profile.value);
+    let finalizing = false;
     const interrupt = () => {
-      context.interrupt(new Error(`${spec.name} interrupted`));
-      // A graceful stop keeps requests and finalization alive, including repeated interrupts.
-      if (!context.signal.aborted) process.once("SIGINT", interrupt);
+      if (!finalizing) context.interrupt(new Error(`${spec.name} interrupted`));
     };
-    process.once("SIGINT", interrupt);
+    process.on("SIGINT", interrupt);
     try {
       let result: CommandResult<Output>;
       try { result = await spec.run(context, input); }
@@ -60,6 +59,7 @@ async function executeCommand<Input extends CommandInput, Output>(
         reportError(error, { context: spec.name, summary: "fatal" });
         result = { status: CommandStatus.Failed, artifacts: [], error };
       }
+      finalizing = true;
       context.artifacts.add(result.artifacts);
       process.exitCode = await finalizeCommand({
         spec, commandInput: input, result, context, delivery: opts, code: commandExitCode(result),

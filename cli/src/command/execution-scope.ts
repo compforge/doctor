@@ -13,8 +13,14 @@ interface ExecutionScope {
 const execution = new AsyncLocalStorage<ExecutionScope>();
 
 /** Host adapters inherit cancellation without exposing the Core context to Plugin code. */
-export function currentCommandSignal(): AbortSignal | undefined {
-  return execution.getStore()?.signal;
+export function currentCommandSignal(clients?: ExecutionScope["clients"]): AbortSignal | undefined {
+  const scope = execution.getStore();
+  return clients && scope?.clients !== clients ? undefined : scope?.signal;
+}
+
+/** Run inherits the invocation's diagnostics, clients and cleanup registrations. */
+export function withRunSignal<T>(signal: AbortSignal, run: () => Promise<T>): Promise<T> {
+  return execution.run({ ...execution.getStore()!, signal }, run);
 }
 
 export function currentCommandClients(): Pick<ClientManager, "get" | "create"> | undefined {

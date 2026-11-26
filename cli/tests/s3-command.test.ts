@@ -46,12 +46,12 @@ test("directory listing counts prefixes, stops with resumable cursor and recursi
   });
   try {
     const request = resolveS3Request({ action: "ls", path: "svc/bucket/p/", maxItems: "2" });
-    const first = await executeS3(fixture.client, request);
+    const first = await executeS3(fixture.client, request, fixture.client.signal);
     expect(first).toMatchObject({ complete: false, continuationToken: "next", stoppedReason: "item-limit", pages: 1 });
     expect(first.entries.map(entry => entry.type)).toEqual(["prefix", "object"]);
     expect(urls[0]!.searchParams.get("delimiter")).toBe("/");
     expect(urls[0]!.searchParams.get("max-keys")).toBe("2");
-    const second = await executeS3(fixture.client, { ...request, continuationToken: "next", recursive: true });
+    const second = await executeS3(fixture.client, { ...request, continuationToken: "next", recursive: true }, fixture.client.signal);
     expect(second).toMatchObject({ complete: true, entries: [{ name: "p/dir/file" }] });
     expect(urls[1]!.searchParams.has("delimiter")).toBe(false);
     expect(urls[1]!.searchParams.get("prefix")).toBe("p/");
@@ -64,16 +64,16 @@ test("ls distinguishes successful empty listings from access denied and broken p
     : new Response("<Error><Code>AccessDenied</Code><Message>secret-url</Message></Error>", { status: 403 }));
   try {
     const request = resolveS3Request({ action: "ls", path: "svc/bucket" });
-    const empty = await executeS3(fixture.client, request);
+    const empty = await executeS3(fixture.client, request, fixture.client.signal);
     expect(empty.complete).toBe(true);
     expect(s3Summary(request, empty, undefined)).toContain("没有匹配项");
     mode = "denied";
-    const denied = await executeS3(fixture.client, request);
+    const denied = await executeS3(fixture.client, request, fixture.client.signal);
     expect(denied).toMatchObject({ complete: false, failure: { httpStatus: 403, code: "AccessDenied" } });
     expect(s3Summary(request, denied, undefined)).not.toContain("没有匹配项");
     expect(JSON.stringify(denied)).not.toContain("secret-url");
     mode = "broken";
-    expect((await executeS3(fixture.client, request)).failure?.code).toBe("MissingContinuationToken");
+    expect((await executeS3(fixture.client, request, fixture.client.signal)).failure?.code).toBe("MissingContinuationToken");
   } finally { await fixture.close(); }
 });
 
@@ -81,7 +81,7 @@ test("bucket discovery paginates; repeated cursor retains evidence without claim
   let calls = 0;
   const fixture = await startS3Fixture(() => xml(`<ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Buckets><Bucket><Name>bucket-${++calls}</Name></Bucket></Buckets><ContinuationToken>same</ContinuationToken></ListAllMyBucketsResult>`));
   try {
-    const result = await executeS3(fixture.client, resolveS3Request({ action: "ls", path: "svc" }));
+    const result = await executeS3(fixture.client, resolveS3Request({ action: "ls", path: "svc" }), fixture.client.signal);
     expect(result).toMatchObject({ complete: false, pages: 2, failure: { code: "RepeatedContinuationToken" } });
     expect(result.entries).toHaveLength(2);
   } finally { await fixture.close(); }
@@ -91,7 +91,7 @@ test("stat uses HEAD without LIST and passes object version", async () => {
   const requests: Request[] = [];
   const fixture = await startS3Fixture((_url, request) => { requests.push(request); return new Response(null, { headers: { "content-length": "17", etag: '"etag"' } }); });
   try {
-    const result = await executeS3(fixture.client, resolveS3Request({ action: "stat", path: "svc/bucket/key", versionId: "v1" }));
+    const result = await executeS3(fixture.client, resolveS3Request({ action: "stat", path: "svc/bucket/key", versionId: "v1" }), fixture.client.signal);
     expect(result.complete).toBe(true);
     expect(requests.map(request => request.method)).toEqual(["HEAD"]);
     expect(new URL(requests[0]!.url).searchParams.get("versionId")).toBe("v1");
@@ -143,9 +143,12 @@ test("deadline retains earlier pages; parent cancellation propagates", async () 
   });
   try {
     const request = { ...resolveS3Request({ action: "ls", path: "svc/bucket" }), timeoutMs: 20 };
-    const result = await executeS3(fixture.client, request);
+    const result = await executeS3(fixture.client, request, fixture.client.signal);
     expect(result).toMatchObject({ complete: false, stoppedReason: "time-limit", pages: 1, continuationToken: "next", entries: [{ name: "first" }] });
-    await fixture.client.dispose();
-    await expect(executeS3(fixture.client, request)).rejects.toThrow();
+    const controller = new AbortController();
+    const pending = executeS3(fixture.client, request, controller.signal);
+    controller.abort(new Error("cancel listing"));
+    await expect(pending).rejects.toThrow("cancel listing");
+    expect(fixture.client.signal.aborted).toBe(false);
   } finally { list.mockRestore(); await fixture.close(); }
 });

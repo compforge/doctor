@@ -24,10 +24,10 @@ export interface S3Result {
 type S3Access = Pick<S3Client, "signal" | "listBuckets" | "listObjects" | "headBucket" | "headObject" | "readObject">;
 
 /** @spec Traversal is bounded and explicit; partial or failed listings never become an empty directory. */
-export async function executeS3(client: S3Access, request: S3Request): Promise<S3Result> {
+export async function executeS3(client: S3Access, request: S3Request, runSignal: AbortSignal): Promise<S3Result> {
   const result: S3Result = { entries: [], pages: 0, complete: false };
   const deadline = AbortSignal.timeout(request.timeoutMs);
-  const signal = AbortSignal.any([client.signal, deadline]);
+  const signal = AbortSignal.any([runSignal, deadline]);
   try {
     if (request.action === "stat") {
       if (request.key) result.metadata = await client.headObject(request.bucket!, request.key, { signal, versionId: request.versionId });
@@ -75,6 +75,7 @@ export async function executeS3(client: S3Access, request: S3Request): Promise<S
     }
     result.stoppedReason = "item-limit";
   } catch (error) {
+    runSignal.throwIfAborted();
     client.signal.throwIfAborted();
     if (deadline.aborted) result.stoppedReason = "time-limit";
     else result.failure = S3Error.from(error).toJSON();

@@ -10,15 +10,22 @@ export interface S3Inspection {
   chunk?: ChunkProbe;
 }
 
-export async function inspectS3(client: S3Client, request: S3Request, prepare: (bucket: string, signal: AbortSignal) => Promise<S3Wire>,
+export async function prepareInspection(bucket: string, timeoutMs: number, prepare: (bucket: string, signal: AbortSignal) => Promise<S3Wire>) {
+  const deadline = performance.now() + timeoutMs;
+  const timeout = AbortSignal.timeout(timeoutMs);
+  const wire = await prepare(bucket, timeout).catch(error => S3Error.from(error));
+  return { wire, deadline, timeout };
+}
+
+export async function inspectS3(client: S3Client, request: S3Request, runSignal: AbortSignal,
+  inspection: Awaited<ReturnType<typeof prepareInspection>>,
   authorize: () => Promise<{ approved: true } | { approved: false; reason: string }>): Promise<S3Inspection> {
   const bucket = request.bucket!;
   const result: S3Inspection = { errors: {} };
-  const started = performance.now();
-  const signal = AbortSignal.any([client.signal, AbortSignal.timeout(request.timeoutMs)]);
-  let wire: S3Wire | undefined;
-  try {
-    wire = await prepare(bucket, signal);
+  const { wire, deadline, timeout } = inspection;
+  const signal = AbortSignal.any([runSignal, timeout]);
+  if (wire instanceof S3Error) result.errors.headBucket = wire.message;
+  else try {
     const response = await wire.request("HEAD", "", signal);
     result.bucketHead = { httpStatus: response.status, region: response.headers["x-amz-bucket-region"],
       server: response.headers.server, requestId: response.headers["x-amz-request-id"] };
@@ -30,13 +37,14 @@ export async function inspectS3(client: S3Client, request: S3Request, prepare: (
     try { result.object = await client.headObject(bucket, request.key, { versionId: request.versionId, signal }); }
     catch (error) { result.errors.object = S3Error.from(error).message; }
   }
-  if (!wire || signal.aborted) result.errors.chunk = signal.aborted ? "操作超时或已取消" : "S3 探测通道不可用";
+  if (signal.aborted) result.errors.chunk = "操作超时或已取消";
+  else if (wire instanceof S3Error) result.errors.chunk = "S3 探测通道不可用";
   else {
-    const remaining = Math.max(1, Math.ceil(request.timeoutMs - (performance.now() - started)));
+    const remaining = Math.max(1, Math.ceil(deadline - performance.now()));
     const permission = await authorize();
     if (!permission.approved) result.errors.chunk = permission.reason;
     else {
-      result.chunk = await probeChunkLimit(wire, client, bucket, AbortSignal.any([client.signal, AbortSignal.timeout(remaining)]));
+      result.chunk = await probeChunkLimit(wire, client, bucket, AbortSignal.any([runSignal, AbortSignal.timeout(remaining)]));
       if (result.chunk.stoppedReason !== "exact" && result.chunk.stoppedReason !== "budget") result.errors.chunk = result.chunk.stoppedReason;
     }
   }

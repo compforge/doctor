@@ -5,7 +5,7 @@ import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod/log";
 import { redisDataSource, s3DataSource } from "@compforge/doctor-plugin";
 import { RedisClient } from "@compforge/harness-toolbox/kv/redis";
-import { CommandContext } from "../src/command";
+import { CommandContext, CommandStatus, defineCommand } from "../src/command";
 import { resolveDataSourceTarget } from "../src/datasource/workload";
 import { borrowServiceClient } from "../src/datasource/client";
 import { resolveKubernetesEnvironment } from "../src/infra/k8s/environment";
@@ -221,7 +221,7 @@ test("Redis source needs neither same-name K8s Service nor Pod exec and never cl
   expect(closes).toBe(1);
 });
 
-test("Redis source helper preserves toolbox target and timeout budgets", async () => {
+test("Redis source preserves timeout budgets and propagates run cancellation to constructor-bound queries", async () => {
   const f = executor();
   let timeoutMs: number | undefined;
   const initialize = RedisClient.prototype.initialize;
@@ -245,10 +245,25 @@ test("Redis source helper preserves toolbox target and timeout budgets", async (
   };
   const command = new CommandContext({}, undefined, { plugin: logPlugin(service) });
   try {
-    const client = await borrowServiceClient(command, { profileName: "default", kubernetes: { namespace: "demo", namespaceSource: "default", kubeconfigSource: "default" } },
-      f.exec, service.name, { access: {} }, source);
-    expect(client.target).toEqual(target);
-    expect(timeoutMs).toBe(2_000);
+    const query = defineCommand({
+      name: "redis-read",
+      prepare: async () => target,
+      run: async ctx => {
+        const client = await borrowServiceClient(ctx, { profileName: "default", kubernetes: { namespace: "demo", namespaceSource: "default", kubeconfigSource: "default" } },
+          f.exec, service.name, { access: {} }, source);
+        expect(client.target).toEqual(target);
+        expect(timeoutMs).toBe(2_000);
+        expect(client).toBeInstanceOf(RedisClient);
+        expect((client as RedisClient).signal.aborted).toBeFalse();
+        ctx.interrupt(new Error("stop reads"));
+        expect((client as RedisClient).signal.aborted).toBeTrue();
+        expect(ctx.clientSignal.aborted).toBeFalse();
+        return { status: CommandStatus.Ok, output: undefined, artifacts: [] };
+      },
+    });
+    const result = await query.run(command, {});
+    expect(result.status).toBe(CommandStatus.Cancelled);
+    expect(result).not.toHaveProperty("error");
   } finally {
     try { await command.disposeClients(); } finally { observed.mockRestore(); }
   }

@@ -1,6 +1,6 @@
 import type { Client } from "@compforge/harness-common";
 import { ClientManager, clientKey } from "@compforge/harness-common";
-import { currentCommandClients } from "../../command/execution-scope";
+import { currentCommandClients, currentCommandSignal } from "../../command/execution-scope";
 import { ServicePortForwardTransport } from "@compforge/harness-toolbox/transport";
 import { RedisAccess, type RedisAccessApi } from "@compforge/harness-toolbox/kv/redis";
 import type { Executor, ExecTarget } from "@compforge/harness-toolbox/kubernetes/executor";
@@ -134,13 +134,15 @@ export async function prepareRedisAccess(
   if (config.client) return { access: config.client.access, forwards: [], close: async () => {} };
   if (injectedAccess) return { access: injectedAccess, forwards: [], close: () => injectedAccess.close() };
   const clients = currentCommandClients();
+  const runSignal = currentCommandSignal();
   let local: RedisAccessClient | undefined;
   try {
     const client = clients
       ? await clients.create({
-          createClient: (_clients, signal) => new RedisAccessClient(executor, config, target, signal, _clients),
+          createClient: (dependencies, signal) => new RedisAccessClient(executor, config, target,
+            runSignal ? AbortSignal.any([signal, runSignal]) : signal, dependencies),
         })
-      : (local = new RedisAccessClient(executor, config, target));
+      : (local = new RedisAccessClient(executor, config, target, runSignal));
     if (local) await local.initialize();
     return { access: client.access, forwards: client.forwards, close: () => client.dispose() };
   } catch (error) {

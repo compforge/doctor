@@ -79,7 +79,7 @@ export function makeS3ProviderInspect(): Inspect<S3InspectionFacts, S3CommandCon
       }
       try {
         const provider = await inspectS3Provider({
-          http: ctx.providerHttp,
+          http: ctx.providerHttp, signal: ctx.command.signal,
           credentials: ctx.target
             ? { accessKey: ctx.target.credentials.accessKeyId, secretKey: ctx.target.credentials.secretAccessKey }
             : undefined,
