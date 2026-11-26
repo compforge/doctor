@@ -111,8 +111,8 @@ test("malformed and conflicting contributions do not widen or supersede verified
   const context = new CommandContext({}, undefined, { plugin });
   try {
     const scope = await resolveRequestWorkloads(context, plugin.services, "biz", podDiscoveryExecutor([]), { namespace: "ns" });
-    expect(scope.gaps.join("\n")).toContain("unknown owner 'missing'");
-    expect(scope.gaps.join("\n")).toContain("conflicting Workload worker/conflict");
+    expect(scope.gaps.map(gap => gap.reason).join("\n")).toContain("unknown owner 'missing'");
+    expect(scope.gaps.map(gap => gap.reason).join("\n")).toContain("conflicting Workload worker/conflict");
     expect(scope.catalog.find("worker")!.workloads).toEqual([pod("valid", "selected")]);
     expect(plugin.services.find("worker")!.workloads).toEqual(worker.workloads);
   } finally { await context.disposeClients(); }

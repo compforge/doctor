@@ -77,18 +77,19 @@ async function captureLifecycleSignals(
 ): Promise<InspectFacts["lifecycleSignals"]> {
   const scope = inspectCollectionScope(config);
   if (!scope.event && !scope.hpa) return unavailableFact("inspect.lifecycle-signals", "service-targets", "所选字段未纳入 Event/HPA");
+  if (!resolved.size) return collectedFact("inspect.lifecycle-signals", "service-targets", { events: [], autoscalers: [], omittedEvents: 0 });
   const [events, hpas] = await Promise.all([
     scope.event ? ctx.resources({ apiVersion: "v1", resource: "events", namespace: config.namespace }) : undefined,
     scope.hpa ? ctx.resources({ apiVersion: "autoscaling/v2", resource: "horizontalpodautoscalers", namespace: config.namespace }) : undefined,
   ]);
-  const recordStep = (id: string, title: string, capture: KubernetesResourceCapture | undefined) => {
+  const recordStep = (id: string, title: string, capture: KubernetesResourceCapture | undefined, parseError?: string) => {
     if (!capture) return;
-    ctx.bundle.addStep({ id, title, risk: "observe", status: capture.value !== undefined ? "ok" : "failed",
-      reason: capture.error, command: capture.execution?.command, request: capture.request,
+    ctx.bundle.addResult({ id, title, risk: "observe", status: capture.value !== undefined && !parseError ? "ok" : "failed",
+      reasonCode: parseError ? "invalid_response" : capture.reasonCode, sourceCode: capture.sourceCode, reason: parseError ?? capture.error, command: capture.execution?.command, request: capture.request,
       observedAt: capture.observedAt, durationMs: capture.durationMs });
   };
-  recordStep("inspect-events", "Workload 关联 Event", events);
-  recordStep("inspect-hpas", "HPA 自动扩缩", hpas);
+  let hpaError: string | undefined;
+  let eventError: string | undefined;
   const failures = [
     events && events.value === undefined ? `Event：${events.error ?? "响应缺失"}` : undefined,
     hpas && hpas.value === undefined ? `HPA：${hpas.error ?? "响应缺失"}` : undefined,
@@ -113,7 +114,7 @@ async function captureLifecycleSignals(
   if (hpas?.value !== undefined) {
     try { autoscalers = parseKubernetesAutoscalers(JSON.stringify(hpas.value), config.namespace)
       .filter(hpa => scaleTargetKeys.has(`${hpa.targetKind}/${hpa.targetName}`)); }
-    catch { failures.push("HPA：响应解析失败"); }
+    catch { hpaError = "HPA：响应解析失败"; failures.push(hpaError); }
   }
   // Full Inspect can associate HPA events; event-only mode does not fetch another field's resources.
   for (const autoscaler of autoscalers) objectNames.add(autoscaler.name);
@@ -124,8 +125,10 @@ async function captureLifecycleSignals(
       const selected = selectLifecycleEvents(parseKubernetesEvents(JSON.stringify(events.value), config.namespace), objectNames, Infinity, config.timeWindow);
       omittedEvents = Math.max(0, selected.length - LIFECYCLE_EVENT_LIMIT);
       selectedEvents = selected.slice(-LIFECYCLE_EVENT_LIMIT);
-    } catch { failures.push("Event：响应解析失败"); }
+    } catch { eventError = "Event：响应解析失败"; failures.push(eventError); }
   }
+  recordStep("inspect-events", "Workload 关联 Event", events, eventError);
+  recordStep("inspect-hpas", "HPA 自动扩缩", hpas, hpaError);
   if (failures.length) {
     ctx.log(`[collect] Event/HPA 采集缺口：${failures.join("；")}`);
     if (config.field || failures.length === Number(scope.event) + Number(scope.hpa)) {
@@ -145,7 +148,8 @@ function dependencyTargets(
   const missing: string[] = [];
   for (const serviceName of config.services) {
     const service = catalog.find(serviceName);
-    const declared = service?.toolchain;
+    if (!service?.workloads.length) continue;
+    const declared = service.toolchain;
     if (!declared) {
       missing.push(`${serviceName}: Plugin 未声明 Toolchain`);
       continue;
@@ -255,8 +259,6 @@ export function makeServiceTargetsInspect(
         : deploymentReasons.length
           ? failedFact("inspect.deployment-configuration", "service-targets", deploymentReasons.join("；"))
           : collectedFact("inspect.deployment-configuration", "service-targets", { requested: true });
-      const dependencyTargetsFailure = capture.podParseError
-        ?? capture.podCapture?.error;
       const steps = [
         ...(capture.serviceCapture ? [["inspect-services", "Workload Service 资源", capture.serviceCapture, undefined] as const] : []),
         ...(capture.podCapture ? [["inspect-pods", "Pod 运行态", capture.podCapture, capture.podParseError] as const] : []),
@@ -280,6 +282,7 @@ export function makeServiceTargetsInspect(
           risk: "observe",
           status: !result.error && !parseError ? "ok" : "failed",
           reason: parseError ?? result.error,
+          reasonCode: parseError ? "invalid_response" : result.reasonCode, sourceCode: result.sourceCode,
           command: result.execution?.command,
           request: result.request,
           reused: result.reused, observedAt: result.observedAt,
@@ -287,6 +290,9 @@ export function makeServiceTargetsInspect(
           // Pod spec、Deployment 与 ConfigMap 都可能包含凭据，只落解析后的脱敏 Fact。
         });
       }
+      if (scope.deployment && deploymentReasons.length) ctx.bundle.addResult({
+        id: "inspect-deployment-configuration", title: "Deployment 配置", risk: "observe", status: "unavailable", reason: deploymentReasons.join("；"),
+      });
       const snapshot = capture.snapshot;
       if (!snapshot) {
         const reason = capture.parseError
@@ -294,6 +300,7 @@ export function makeServiceTargetsInspect(
             ? capture.serviceCapture.error
             : undefined)
           ?? "读取 Kubernetes 配置失败";
+        ctx.bundle.addResult({ id: "service-targets", title: "Workload 运行态", risk: "observe", status: "unavailable", reason });
         return {
           serviceTargets: failedFact("inspect.service-targets", "service-targets", reason),
           deploymentConfiguration,
@@ -315,7 +322,7 @@ export function makeServiceTargetsInspect(
               id: `inspect-workload-${serviceName}-${definition.name}-${++captureIndex}`,
               title: `${serviceName}/${definition.name} Workload 定位`,
               risk: "observe", status: !result.error ? "ok" : "failed",
-              reason: result.error,
+              reason: result.error, reasonCode: result.reasonCode, sourceCode: result.sourceCode,
               command: result.execution?.command,
               request: result.request,
               reused: result.reused, observedAt: result.observedAt, durationMs: result.durationMs,
@@ -325,9 +332,10 @@ export function makeServiceTargetsInspect(
       }
       const resolvedDependencyTargets: InspectFacts["dependencyTargets"] = !scope.dependencies
         ? unavailableFact("inspect.dependency-targets", "service-targets", DEPENDENCIES_SKIPPED_REASON)
-        : dependencyTargetsFailure
-          ? failedFact("inspect.dependency-targets", "service-targets", dependencyTargetsFailure)
-          : dependencyTargets(config, resolvedWorkloads, catalog);
+        : dependencyTargets(config, resolvedWorkloads, catalog);
+      if (resolvedDependencyTargets.status === "collected" && resolvedDependencyTargets.missing.length) ctx.bundle.addResult({
+        id: "inspect-dependency-targets", title: "无法采集的依赖目标", risk: "observe", status: "unavailable", reason: resolvedDependencyTargets.missing.join("；"),
+      });
       const lifecycleSignals = await captureLifecycleSignals(ctx, config, resolvedWorkloads);
 
       const services: Record<string, InspectServiceTargetFact> = {};
@@ -353,8 +361,11 @@ export function makeServiceTargetsInspect(
               }
             }
           }
-          const podFailure = capture.podParseError
-            ?? capture.podCapture?.error;
+          const reason = resolved.unavailableReason;
+          if (!config.field || config.field === "image" || reason) {
+            ctx.bundle.addResult({ id: `inspect-runtime-${serviceName}-${definition.name}`, title: `${serviceName}/${definition.name} Pod 运行态`,
+              reasonCode: resolved.reasonCode, sourceCode: resolved.sourceCode, risk: "observe", status: reason ? "unavailable" : "ok", reason });
+          }
           workloads[definition.name] = {
             name: definition.name,
             description: definition.description,
@@ -364,10 +375,8 @@ export function makeServiceTargetsInspect(
               .map(({ extension }) => extension.id),
             deployments,
             unavailableDeployments,
-            podRuntime: podFailure
-              ? failedFact("inspect.workload-pods", "service-targets", podFailure)
-              : resolved.unavailableReason
-                ? unavailableFact("inspect.workload-pods", "service-targets", resolved.unavailableReason)
+            podRuntime: resolved.unavailableReason
+                ? { ...unavailableFact("inspect.workload-pods", "service-targets", resolved.unavailableReason), reasonCode: resolved.reasonCode, sourceCode: resolved.sourceCode }
                 : collectedFact("inspect.workload-pods", "service-targets", {
                   pods: resolved.pods.map((pod) => {
                     const environment = (scope.env || scope.clock) ? selectWorkloadPodContainer(resolved, pod) : undefined;

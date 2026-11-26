@@ -297,6 +297,7 @@ PluginClientContext 可提供宿主 DEBUG logger；数据访问适配器可将�
 同一命令内，每个 biz ID 和 Kubernetes 目标只解析一次。提供方及结果中各归属 Service 使用请求内声明；
 其它 Service 的 Inspect 沿用静态声明。按 ID 自动采集日志时，归属 Service 需要声明 `logs`。
 返回空数组表示该提供方没有相关 Workload；未知归属、同一归属下重名且定义冲突、查询失败都会记录该 ID 的采集缺口。
+Inspect 在 Evidence 中按提供方记录本次返回的 Workload，包括空数组。只有请求范围包含的 Workload 才调度对应的 Probe；已选 Workload 的 Pod 无法读取时仍记录缺口。证据完整度与访问原因见 [Collect 采集结果](collect.md#采集结果)。
 批量输入分别保留目标与证据。无 ID 时使用静态目录。
 
 多 biz ID 的结果分别保存，实例发现可取并集，但每个请求的 Probe 和 Evidence 只消费自己的 Workload 子集。

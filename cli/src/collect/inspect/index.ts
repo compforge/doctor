@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { reportError } from "../../app/error-report";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { CommandContext } from "../../command";
-import { commandOutcome, resolveKubernetesCommandContext, type CommandResult } from "../../command";
+import { CommandStatus, commandOutcome, resolveKubernetesCommandContext, type CommandResult } from "../../command";
 import { immutableServiceProbeFacts } from "../../plugin/evidence";
 import {
   enforceKubernetesAccess,
@@ -21,7 +21,7 @@ import {
 import { useLogger } from "../../terminal/log";
 import { runCollect } from "../engine";
 import { EvidenceBundle } from "../evidence";
-import { collectCommandOutcome, evaluateCollectOutcome } from "../outcome";
+import { collectCommandOutcome, collectEvidenceOutcome, type CollectEvidenceStatus } from "../outcome";
 import { recordFailureBundle } from "../output/failure-bundle";
 import {
   detectInspectEvidenceGaps,
@@ -30,7 +30,7 @@ import {
   projectInspectServiceFacts,
   searchInspectFields,
 } from "./detector";
-import { makeServiceTargetsInspect } from "./fact/inspect";
+import { containerEnvironmentTargets, makeServiceTargetsInspect } from "./fact/inspect";
 import type {
   CollectInspectCliOpts,
   InspectCommandContext,
@@ -94,17 +94,17 @@ export async function runCollectInspect(
     return commandOutcome(130);
   }
   config = { ...config, services };
-  let requestGaps: readonly string[] = [];
-  if (opts.bizId) {
-    const scope = await resolveRequestWorkloads(commandContext, plugin.services, opts.bizId, executor, config.kube);
-    requestGaps = scope.gaps;
+  const requestWorkloads = opts.bizId
+    ? await resolveRequestWorkloads(commandContext, plugin.services, opts.bizId, executor, config.kube) : undefined;
+  if (requestWorkloads) {
     // An incomplete lookup cannot authorize a broad static fallback for a possible foreign owner.
-    if (requestGaps.length) {
-      services = services.filter(name => scope.owners.has(name) && scope.catalog.find(name)!.workloads.length);
-      if (!services.length) throw new Error(requestGaps.join("；"));
-      config = { ...config, services };
+    if (requestWorkloads.gaps.length) {
+      services = services.filter(name => requestWorkloads.owners.has(name) && (
+        requestWorkloads.catalog.find(name)!.workloads.length || requestWorkloads.results.some(result => result.service === name)
+      ));
+      if (services.length) config = { ...config, services };
     }
-    plugin = { ...plugin, services: scope.catalog };
+    plugin = { ...plugin, services: requestWorkloads.catalog };
   }
   const selectedDefinitions = services.map((name) => plugin.services.find(name)!);
   const includeDeploymentConfig = await resolveInspectDeploymentSelection({ config });
@@ -125,6 +125,70 @@ export async function runCollectInspect(
   useLogger().info(includeDependencies
       ? "[collect] 应用依赖及版本：纳入采集\n"
       : "[collect] 应用依赖及版本：未纳入本次采集范围");
+  const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-inspect-"));
+  const staging = join(stagingRoot, config.reportName);
+  commandContext.artifacts.add({ command: "inspect", path: staging });
+  const bundle = new EvidenceBundle(staging);
+  for (const result of requestWorkloads?.results ?? []) {
+    const provider = `${result.service}/${result.provider}`;
+    const step = {
+      id: `request-workloads-${provider}`, title: `${provider} 请求 Workload 定位`, risk: "observe" as const, status: "ok" as const,
+      output: JSON.stringify({ bizId: opts.bizId, provider, workloads: result.workloads }), ext: "json",
+    };
+    // An empty association answers this request. A selected target still needs to be read.
+    if (services.includes(result.service) && !result.workloads.length && !plugin.services.find(result.service)?.workloads.length) bundle.addResult(step);
+    else bundle.addStep(step);
+  }
+  for (const [index, failure] of (requestWorkloads?.gaps ?? []).entries()) bundle.addResult({
+    id: `request-workloads-${index + 1}`, title: "请求 Workload 定位", risk: "observe", status: "failed", ...failure,
+  });
+  const log = (line: string) => useLogger().info(`${line}`);
+  let facts: Readonly<Partial<InspectFacts>> | undefined;
+  let diagnosis: InspectDiagnosis | undefined;
+  let diagnosisFailure: string | undefined;
+  const outcome = () => collectEvidenceOutcome(bundle.getSteps().flatMap(step => step.evidence ?? []));
+  const writeCollection = (evidence?: CollectEvidenceStatus) => bundle.writeCollection({
+    evidence,
+    doctorVersion: DOCTOR_CLI_VERSION,
+    target: {
+      namespace: config.namespace,
+      services: config.services.join(","),
+      biz_id: opts.bizId,
+    },
+    inspectionFacts: facts ? {
+      serviceTargets: facts.serviceTargets,
+      deploymentConfiguration: facts.deploymentConfiguration,
+      dependencyTargets: facts.dependencyTargets,
+      lifecycleSignals: facts.lifecycleSignals,
+    } : {},
+    params: {
+      time_window: config.timeWindow,
+      services: config.services,
+      deployment_config: config.includeDeploymentConfig,
+      search: config.search,
+      field: config.field,
+      dependencies: config.includeDependencies,
+      output_format: config.format,
+    },
+    startedAt,
+    finishedAt: new Date().toISOString(),
+  });
+
+  const fail = (reason: string): CommandResult<void> => {
+    bundle.settle(reason);
+    bundle.writeSummary(`# Service Inspect 失败\n\n${reason}\n`);
+    writeCollection(outcome().evidence);
+    recordFailureBundle({
+      bundleDir: staging,
+      collectCode: 1,
+      reason,
+    });
+    return { status: CommandStatus.Failed, artifacts: [], reason };
+  };
+
+  if (requestWorkloads?.gaps.length && !services.length) {
+    return fail(requestWorkloads.gaps.map(gap => gap.reason).join("；"));
+  }
   const scope = inspectCollectionScope(config);
   const deploymentNeeds = scope.deployment ? [{
     requirement: "preferred" as const,
@@ -199,17 +263,6 @@ export async function runCollectInspect(
     ],
   });
 
-  const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-inspect-"));
-  const staging = join(stagingRoot, config.reportName);
-  commandContext.artifacts.add({ command: "inspect", path: staging });
-  const bundle = new EvidenceBundle(staging);
-  for (const [index, reason] of requestGaps.entries()) bundle.addStep({
-    id: `request-workloads-${index + 1}`, title: "请求 Workload 定位", risk: "observe", status: "failed", reason,
-  });
-  const log = (line: string) => useLogger().info(`${line}`);
-  let facts: Readonly<Partial<InspectFacts>> | undefined;
-  let diagnosis: InspectDiagnosis | undefined;
-  let diagnosisFailure: string | undefined;
   const clusterKube = injectedExecutor ? config.kube
     : bindKubernetesEnvironment(config.kube, (await commandContext.environment(executor)).environment);
   const kubernetes = await commandContext.clients.get(kubernetesClientSource(clusterKube, injectedExecutor));
@@ -225,44 +278,7 @@ export async function runCollectInspect(
     log,
   };
 
-  const writeCollection = () => bundle.writeCollection({
-    doctorVersion: DOCTOR_CLI_VERSION,
-    target: {
-      namespace: config.namespace,
-      services: config.services.join(","),
-      biz_id: opts.bizId,
-    },
-    inspectionFacts: facts ? {
-      serviceTargets: facts.serviceTargets,
-      deploymentConfiguration: facts.deploymentConfiguration,
-      dependencyTargets: facts.dependencyTargets,
-      lifecycleSignals: facts.lifecycleSignals,
-    } : {},
-    params: {
-      time_window: config.timeWindow,
-      services: config.services,
-      deployment_config: config.includeDeploymentConfig,
-      search: config.search,
-      field: config.field,
-      dependencies: config.includeDependencies,
-      output_format: config.format,
-    },
-    startedAt,
-    finishedAt: new Date().toISOString(),
-  });
-
-  const fail = (reason: string): number => {
-    bundle.settle(reason);
-    bundle.writeSummary(`# Service Inspect 失败\n\n${reason}\n`);
-    writeCollection();
-    recordFailureBundle({
-      bundleDir: staging,
-      collectCode: 1,
-      reason,
-    });
-    return 1;
-  };
-
+  let probesPlanned = false;
   try {
     const execution = await runCollect({
       ctx,
@@ -271,15 +287,23 @@ export async function runCollectInspect(
       checkpointPartialFacts: snapshot => { facts = snapshot; writeCollection(); },
       inspects: [makeServiceTargetsInspect(config, plugin.services)],
       planProbes: (collectedFacts) => {
+        if (scope.env) {
+          const { missing } = containerEnvironmentTargets(collectedFacts);
+          if (missing.length) bundle.addResult({ id: "inspect-environment-targets", title: "无法读取的 Pod Env",
+            risk: "observe", status: "unavailable", reason: missing.join("；") });
+        }
         const probeFacts = immutableServiceProbeFacts(
           projectInspectServiceFacts(collectedFacts, config.services),
         );
+        probesPlanned = true;
         return makeInspectProbes(
           collectedFacts,
           config,
           plugin.services,
           probeFacts,
-        );
+        ).map(probe => ({ ...probe, onCancelled: (_ctx: InspectCommandContext, started: boolean) => bundle.addResult({
+          id: probe.id, title: probe.id, risk: "observe", status: started ? "unavailable" : "skipped", reasonCode: "cancelled", reason: "采集已取消",
+        }) }));
       },
       log,
       buildEvidence: buildInspectEvidence,
@@ -292,20 +316,32 @@ export async function runCollectInspect(
     reportError(error, { context: "doctor inspect/diagnosis", summary: "Service Inspect 失败" });
     diagnosisFailure = error instanceof Error ? error.message : String(error);
   }
-  if (diagnosisFailure || !diagnosis) return commandOutcome(fail(diagnosisFailure ?? "配置诊断未形成结果"));
+  if (commandContext.signal.aborted) {
+    if (!probesPlanned) bundle.addResult({ id: "inspect-cancelled", title: "未完成的 Inspect 采集", risk: "observe", status: "skipped",
+      reasonCode: "cancelled", reason: "采集已取消" });
+    writeCollection(outcome().evidence);
+    if (diagnosis) writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
+    bundle.writeSummary("# Service Inspect 已取消");
+    return commandOutcome(130);
+  }
+  if (diagnosisFailure || !diagnosis) {
+    const reason = diagnosisFailure ?? "配置诊断未形成结果";
+    bundle.addResult({ id: "inspect-failure", title: "Service Inspect", risk: "observe", status: "failed", reason });
+    return fail(reason);
+  }
 
   if (config.field !== undefined) {
     diagnosis = { ...diagnosis, evidence: { ...diagnosis.evidence,
       search: searchInspectFields(diagnosis.evidence, config.field, config.search),
     } };
   }
-  const outcome = evaluateCollectOutcome(bundle.getSteps().map(item => item.status));
+  const collected = outcome();
   bundle.writeSummary(buildInspectSummary(diagnosis, config.namespace));
-  writeCollection();
+  writeCollection(collected.evidence);
   writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
-  if (outcome.exitCode !== 0) {
+  if (collected.exitCode !== 0) {
     const reason = gapMessages(diagnosis.findings).join("；") || "未取得完整配置证据";
-    recordFailureBundle({ bundleDir: staging, collectCode: outcome.exitCode, reason });
+    recordFailureBundle({ bundleDir: staging, collectCode: collected.exitCode, reason });
   }
-  return collectCommandOutcome(outcome);
+  return collectCommandOutcome(collected);
 }

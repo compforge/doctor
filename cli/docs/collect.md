@@ -148,6 +148,28 @@ partial。依赖 Probe 除 Observations 外还会收到上游的状态和原因�
 继续；runner 不替领域猜测失败后是否值得升级。`dependsOn` 只描述真实数据依赖，`targetAccess` 表达
 整条策略链可能产生的最大影响。
 
+### 采集结果
+
+每个采集项先明确要回答的问题，并保留目标、操作与提供方。Inspect 的 `collection.json` 用
+`steps[].status` 记录动作执行情况，用可选的 `steps[].evidence` 标记该动作交付的最终证据。
+有明确原因时，`reason` 保存可读说明，`reason_code` 保存可供程序使用的原因，
+`source_code` 保留源端状态码，例如 Kubernetes 的 HTTP 403。使用者或 Detector 判断这些事实是否符合业务预期。
+
+| 采集情况 | 该项 evidence | 记录与后续动作 |
+|---|---|---|
+| 查询完成，返回数据或确认零条记录 | `complete` | 保留原值，包括 `[]`、`false`、`0`。请求没有关联 Workload 时，保留空结果及其提供方，到此结束该分支 |
+| 检查权限，权限接口明确返回拒绝 | `complete` | 保留 `allowed=false`；权威存在性查询明确回答不存在时，同样可以完整回答该问题 |
+| 读取对象内容，被拒绝或源端返回对象不存在 | `missing` | 记录 `forbidden` 或 `not_found` 及源端码，对象内容未知 |
+| 超时、认证失败、响应无法解析 | `missing` 或 `partial` | 保存可取得的原因和已取得的数据。只有保留了部分所需答案时才是 `partial` |
+| 采集预算用尽 | `partial` 或 `missing` | 保留已取得的内容与截断信息，按实际取得的范围归约 |
+| 可选项未选，或上游已确认无需执行 | 不计入 | 可省略步骤，也可记录 `skipped` 与原因 |
+| 用户取消，必需项尚未执行 | `missing` | 记录 `skipped` 和 `cancelled`，保留已完成的证据。命令状态为 `cancelled` |
+
+Inspect 将最终采集项归约为 `collection.json` 的 `evidence`。全部满足为 `complete`，
+取得部分所需答案为 `partial`，全部未取得为 `missing`。成功定位 Pod 后读取镜像被拒绝，
+若唯一目标是镜像，结果仍为 `missing`。重试后成功时，保留失败尝试，最终证据为 `complete`。
+报告写入或交付失败另由命令状态表达。
+
 ### 执行状态、诊断判断与交付分开
 
 | CommandStatus | 含义 | 退出码 |

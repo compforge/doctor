@@ -91,6 +91,8 @@ export interface CollectionRecord {
     title: string;
     status: string;
     reason?: string;
+    reason_code?: string;
+    source_code?: string | number;
     duration_ms?: number;
     raw_file?: string;
     truncation?: { reason: string; original_bytes: number; limit_bytes: number };

@@ -1,8 +1,22 @@
 import { expect, test } from "bun:test";
+import { DoctorError } from "@compforge/doctor-plugin";
 import { ToolboxError } from "@compforge/harness-toolbox/errors";
+import { commandExitCode } from "../src/app/command";
+import { CommandInputError, CommandStatus } from "../src/command";
 import { executionDiagnostic } from "../src/command/diagnostic";
 import { inCommandScope, onCommandDispose } from "../src/command/execution-scope";
 import { withDeadline } from "../src/command/deadline";
+
+test("command input errors retain their SDK identity, diagnostic code, cause and CLI exit status", () => {
+  const cause = new SyntaxError("unexpected end of input");
+  const error = new CommandInputError("invalid JSON", { cause });
+  expect(error).toBeInstanceOf(DoctorError);
+  expect(error.cause).toBe(cause);
+  expect(executionDiagnostic(error, { phase: "prepare", target: "input", startedAt: Date.now() })).toMatchObject({
+    message: "invalid JSON", code: "invalid_argument", causes: [{ message: cause.message }],
+  });
+  expect(commandExitCode({ status: CommandStatus.Failed, artifacts: [], error })).toBe(2);
+});
 
 /** @case Cause chains retain transport evidence while credentials are absent from archive JSON. */
 test("diagnostics retain bounded context and sanitize every cause", () => {

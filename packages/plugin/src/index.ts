@@ -19,6 +19,7 @@ export * from "./description";
 export * from "./observation";
 export * from "./facet";
 export * from "./duration";
+export * from "./errors";
 export * from "./probe";
 export * from "./service";
 export * from "./skill";

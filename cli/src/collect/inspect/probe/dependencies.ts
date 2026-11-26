@@ -219,7 +219,7 @@ export function makeDependencyInventoryProbe(
     evaluate: (facts) => targetFromFacts(facts, target)
       ? PROBE_RUNNABLE
       : probeUnavailable(`${target.services.join(", ")} 的依赖采集目标已失效`),
-    onUnavailable: (ctx, reason) => ctx.bundle.addStep({
+    onUnavailable: (ctx, reason) => ctx.bundle.addResult({
       id: target.id,
       title: `${target.services.join(", ")} 应用依赖`,
       risk: "observe",
@@ -245,11 +245,12 @@ export function makeDependencyInventoryProbe(
         truncated: capture.truncated,
         reason: capture.reason,
       };
-      ctx.bundle.addStep({
+      ctx.bundle.addResult({
         id: target.id,
         title: `${target.services.join(", ")} 应用依赖`,
         risk: "observe",
-        status: capture.status === "collected" ? "ok" : "unavailable",
+        status: capture.status === "collected" ? (capture.truncated ? "partial" : "ok") : "unavailable",
+        reasonCode: capture.truncated ? "limit_reached" : undefined,
         reason: capture.reason,
         command: capture.execution?.command,
         exitCode: capture.execution?.exitCode,

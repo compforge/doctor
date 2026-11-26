@@ -1,3 +1,5 @@
+import { DoctorError } from "@compforge/doctor-plugin";
+import { acquisitionFailure } from "../../../command/diagnostic";
 import type { ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
 import { currentCommandSignal } from "../../../command/execution-scope";
 import type { Probe } from "../../protocol";
@@ -35,24 +37,27 @@ export function makeContainerEnvironmentProbe(
         producer: { origin: "core", id: "container-environment" },
         status: "unavailable", values: {},
       };
+      let failure: ReturnType<typeof acquisitionFailure> | undefined;
       let execution: ExecResult | undefined;
       try {
         if (ctx.authorization.fact({ verb: "get", resource: "pods/exec" }, ctx.config.namespace)?.status === "denied") {
-          throw new Error("缺少 pods/exec 权限，无法读取 Pod Env");
+          throw new DoctorError("缺少 pods/exec 权限，无法读取 Pod Env", { code: "forbidden" });
         }
         execution = await ctx.exec({ pod: target.pod, container: target.container },
           ["printenv", "-0"], { timeoutMs: ENVIRONMENT_TIMEOUT_MS, signal: currentCommandSignal() });
-        if (!execution.ok) throw new Error(execution.timedOut ? "读取 Pod Env 超时（15s）"
-          : execution.stderr.trim().split("\n")[0] || `printenv 退出码 ${execution.exitCode}`);
+        if (!execution.ok) throw new DoctorError(execution.timedOut ? "读取 Pod Env 超时（15s）"
+          : execution.stderr.trim().split("\n")[0] || `printenv 退出码 ${execution.exitCode}`, { code: execution.timedOut ? "timeout" : "operation_failed" });
         observation.values = parseContainerEnvironment(execution.stdout);
         observation.status = "collected";
       } catch (error) {
         currentCommandSignal()?.throwIfAborted();
-        observation.reason = error instanceof Error ? error.message : String(error);
+        failure = acquisitionFailure(error);
+        observation.reason = failure.reason;
       }
-      ctx.bundle.addStep({
+      ctx.bundle.addResult({
         id, title: `${target.service}/${target.pod}/${target.container} Pod Env`, risk: "observe",
         status: observation.status === "collected" ? "ok" : "unavailable", reason: observation.reason,
+        reasonCode: failure?.reasonCode, sourceCode: failure?.sourceCode,
         command: execution?.command, durationMs: execution?.durationMs, exitCode: execution?.exitCode,
         output: JSON.stringify(observation, null, 2), ext: "json",
       });

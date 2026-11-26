@@ -234,11 +234,13 @@ export interface Probe<Observation extends ObservationMeta, Facts, Config, Ctx =
   onUnavailable?: (ctx: Ctx, reason: string) => void;
   /** 上游证据证明无需执行时的领域记账；与能力不足严格区分。 */
   onUnnecessary?: (ctx: Ctx, reason: string) => void;
+  /** Cancellation prevented this planned Probe from completing. */
+  onCancelled?: (ctx: Ctx, started: boolean) => void;
   /**
    * 现场访问失败时的领域记账。只有声明该回调，runner 才把异常视为证据缺口并继续；
    * 未声明的异常仍向上抛，避免把 Doctor 编程错误伪装成 partial。
    */
-  onFailed?: (ctx: Ctx, reason: string) => void;
+  onFailed?: (ctx: Ctx, reason: string, error?: unknown) => void;
   run: (
     ctx: Ctx,
     facts: Facts,

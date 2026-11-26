@@ -98,7 +98,7 @@ export function makeFileConfigurationProbe(service: string, source: ServiceFileD
       const collected = observations.filter(item => item.status === "collected").length;
       const status = collected === observations.length ? "ok" : collected ? "partial" : "unavailable";
       ctx.log(`[collect] 配置文件组 ${service}/${source.workload}：${collected}/${observations.length} 个文件已采集`);
-      ctx.bundle.addStep({ id, title: `${service}/${source.workload} 配置文件组`, risk: "observe", status,
+      ctx.bundle.addResult({ id, title: `${service}/${source.workload} 配置文件组`, risk: "observe", status,
         reason: observations.flatMap(item => item.reason ? [item.reason] : []).join("；") || undefined,
         durationMs: performance.now() - started, output: JSON.stringify(observations, null, 2), ext: "json" });
       return observations;

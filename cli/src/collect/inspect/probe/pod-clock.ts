@@ -98,9 +98,9 @@ function makePodClockProbe(service: string, workload: string, pod: InspectPodRun
       }
       observation.status = observation.samples.some(sample => sample.podTimeMs !== undefined) ? "collected" : "unavailable";
       observation.reason ??= observation.samples.find(sample => sample.reason)?.reason;
-      ctx.bundle.addStep({
+      ctx.bundle.addResult({
         id, title: `${service}/${pod.pod} Pod 时钟`, risk: "observe",
-        status: observation.status === "collected" && !observation.reason ? "ok" : "unavailable", reason: observation.reason,
+        status: observation.status === "collected" ? (observation.reason ? "partial" : "ok") : "unavailable", reason: observation.reason,
         command: execution?.command, exitCode: execution?.exitCode,
         durationMs: observation.samples.reduce((total, sample) => total + sample.monotonicEndMs - sample.monotonicStartMs, 0),
         output: JSON.stringify(observation, null, 2), ext: "json",

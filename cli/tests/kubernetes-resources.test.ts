@@ -53,7 +53,7 @@ test("Core snapshot and workload discovery share a native client and preserve AP
     // The initial two independent snapshot reads may open two sockets; later discovery reuses them.
     expect(sockets).toBeLessThanOrEqual(2);
     const denied = await read({ apiVersion: "v1", resource: "services", namespace: "demo", name: "missing" });
-    expect(denied.error).toBeDefined();
+    expect(denied).toMatchObject({ reasonCode: "forbidden", sourceCode: 403 });
     expect(denied.error).not.toContain("credential");
     expect(denied.execution).toBeUndefined();
     const node = await read({ apiVersion: "v1", resource: "nodes", name: "worker" });

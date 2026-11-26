@@ -1,3 +1,6 @@
+import { DoctorError } from "@compforge/doctor-plugin";
+import { kubernetesCommandError } from "@compforge/harness-toolbox/errors";
+import { acquisitionFailure, diagnosticMessage } from "../../command/diagnostic";
 import { clientKey, type ClientManager } from "@compforge/harness-common";
 import { KubernetesClient } from "@compforge/harness-toolbox/kubernetes/client";
 import { KubectlExecutor, type Executor, type ExecResult, type KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
@@ -19,6 +22,8 @@ export interface KubernetesResourceCapture {
   request: KubernetesResourceQuery & { verb: "get" | "list" };
   value?: Resource | ResourceList;
   error?: string;
+  reasonCode?: string;
+  sourceCode?: string | number;
   durationMs: number;
   observedAt: string;
   execution?: ExecResult;
@@ -40,7 +45,8 @@ export function resourceReader(client: KubernetesClient, signal: AbortSignal): K
       return { request, value, observedAt: new Date().toISOString(), durationMs: performance.now() - started };
     } catch (error) {
       requestSignal.throwIfAborted();
-      return { request, error: error instanceof Error ? error.message : String(error),
+      const { reason, ...codes } = acquisitionFailure(error);
+      return { request, error: reason, ...codes,
         observedAt: new Date().toISOString(), durationMs: performance.now() - started };
     }
   };
@@ -58,12 +64,13 @@ export function executorResourceReader(executor: Executor, namespace: string, si
         ...("labelSelector" in query && query.labelSelector ? ["-l", query.labelSelector] : []),
         ...(query.namespace && query.namespace !== namespace ? ["--namespace", query.namespace] : []), "-o", "json"];
       execution = await executor.run(args, { timeoutMs: Math.min(options?.timeoutMs ?? 30_000, 30_000), signal: requestSignal });
-      if (!execution.ok) throw new Error(execution.stderr.trim() || "Read Kubernetes resource failed");
+      if (!execution.ok) throw kubernetesCommandError(execution);
       return { request, value: JSON.parse(execution.stdout), execution,
         observedAt: new Date().toISOString(), durationMs: execution.durationMs };
     } catch (error) {
       requestSignal?.throwIfAborted();
-      return { request, execution, error: error instanceof Error ? error.message : String(error),
+      const { reason, ...codes } = acquisitionFailure(error);
+      return { request, execution, error: execution && !execution.ok && execution.stderr.trim() ? diagnosticMessage(execution.stderr.trim()) : reason, ...codes,
         observedAt: new Date().toISOString(), durationMs: execution?.durationMs ?? performance.now() - started };
     }
   };
@@ -98,7 +105,7 @@ export function capturedResourceAccess(read: KubernetesResourceReader, namespace
     options?.signal?.throwIfAborted();
     const capture = await read({ ...query, namespace }, options);
     options?.signal?.throwIfAborted();
-    if (capture.error || !capture.value) throw new Error(capture.error ?? "Resource response missing");
+    if (capture.error || !capture.value) throw new DoctorError(capture.error ?? "Resource response missing", { code: capture.reasonCode });
     return capture.value;
   };
   return {

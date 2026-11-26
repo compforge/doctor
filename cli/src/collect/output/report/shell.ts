@@ -30,7 +30,7 @@ export function buildHtmlReport(manifest: CollectionRecord, options: HtmlReportO
       <td>${escapeHtml(step.title)}</td>
       <td><span class="status status-${statusClass(step.status)}">${escapeHtml(step.status)}</span></td>
       <td>${step.duration_ms === undefined ? "—" : `${step.duration_ms} ms`}</td>
-      <td>${escapeHtml(step.reason ?? "")}</td>
+      <td>${escapeHtml([step.reason_code, step.source_code, step.reason].filter(value => value !== undefined).join(" · "))}</td>
     </tr>`).join("");
   const summary = renderSummary(options.summaryHtml);
   const renderedSections = renderReportSections(sections);

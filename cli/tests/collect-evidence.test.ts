@@ -301,3 +301,13 @@ describe("EvidenceBundle worksheet", () => {
     expect(manifest.steps[1].reason).toBe(OUTCOME_UNREACHED_REASON);
   });
 });
+
+test("optional skips and failed attempts do not change final evidence; a required skip remains missing", () => {
+  const bundle = new EvidenceBundle(tmp());
+  const base = { title: "Pod", risk: "observe" as const };
+  const optional = bundle.addStep({ ...base, id: "optional", status: "skipped", reasonCode: "not_requested" });
+  const attempt = bundle.addStep({ ...base, id: "lookup", status: "failed", reasonCode: "timeout" });
+  const recovered = bundle.addResult({ ...base, id: "pod", status: "ok" });
+  const cancelled = bundle.addResult({ ...base, id: "logs", status: "skipped", reasonCode: "cancelled" });
+  expect([optional.evidence, attempt.evidence, recovered.evidence, cancelled.evidence]).toEqual([undefined, undefined, "complete", "missing"]);
+});

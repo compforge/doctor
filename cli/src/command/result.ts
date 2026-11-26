@@ -1,3 +1,4 @@
+import { DoctorError } from "@compforge/doctor-plugin";
 import type { ExecutionDiagnostic } from "./diagnostic";
 import type { Summary } from "@compforge/harness-common";
 import type { CommandArtifact } from "./artifacts";
@@ -22,7 +23,11 @@ export type CommandResult<Output> = CommandResultArtifacts & (
     }
 );
 
-export class CommandInputError extends Error {}
+export class CommandInputError extends DoctorError {
+  constructor(message?: string, options?: ErrorOptions) {
+    super(message, { ...options, code: "invalid_argument" });
+  }
+}
 
 /** A parent calls this only for work required by its own objective. Empty work is complete. */
 export function aggregateCommandStatus(statuses: readonly CommandStatus[]): CommandStatus {
