@@ -76,3 +76,19 @@ biz-id 的数据面组合使用 `doctor-collect-batch-<timestamp>.html/.tar.gz`�
 提供该 basename，最终路径与格式仍由统一 Delivery 决定；自动化调用可用 `--output` 指定稳定前缀。
 
 渲染契约与四种阅读场景见 [HTML 报告渲染](../report.md)。
+
+### 按 Service 离线阅读
+
+归档根 `summary.md` 展示查询范围、采集时间和 Service 目录。每个服务页
+`services/<service>/summary.md` 按来源列出本次记录、定位字段和采集缺口。
+服务归属来自采集者记录的 Service 或 Trace 节点的 Service 与 Catalog 名称、别名的匹配。
+批量输入共享的 Data 记录保留关联输入；跨服务 Trace 的各入口引用同一份原始文件。
+未取得服务归属的证据和命令级失败继续从命令导航、manifest 读取。
+
+服务页可附当前 Plugin 版本声明的 `knowledge.md`，产品级知识由各页引用同一份
+`knowledge/product.md`。知识解释术语、状态及服务关系，现场判断引用本包证据。
+有 Operation 声明时，`knowledge/operations.md` 按服务列出 Operation 和直接调用目标，
+保留服务内部调用。服务页按 `calls`（常规路径）与 `mayCalls`（条件路径）分列直接上游调用方、
+下游被调用方，同组内每个 Service 只展示一次。对端有证据页时可以直接跳转。
+这份静态声明可用于决定下一步看哪个服务，某次请求实际经过的路径由 Trace 或日志核实。
+根 `AGENTS.md` 在生成服务页时说明按 Service 查证的阅读顺序。

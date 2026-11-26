@@ -1,3 +1,5 @@
+import { writeServiceNavigation } from "./service-navigation";
+import { summaryText } from "../command/summary";
 import { freezeTimeWindow, resolveTimeWindow } from "./time-window";
 import { prepareCommandRequirements } from "../command/prepare";
 import type { ResultRef } from "../command/manifest";
@@ -255,11 +257,24 @@ export function createCollectCommand(delegate?: CollectDelegate) {
       const steps = (result.output?.steps ?? []).map((step, index) => ({
         kind: step.kind, biz_id: step.bizId, status: step.result.status, result: children[index],
       }));
+      const navigation = writeServiceNavigation(context, result.output?.steps ?? [], children);
+      const lines = ["# Collect", ""];
+      if (navigation.length) {
+        const target = staged.target;
+        if (target?.namespace) lines.push(`Namespace：${summaryText(target.namespace)}`, "");
+        if (target?.tenant_id || target?.tenant_name) lines.push(`租户：${summaryText(target.tenant_id ?? target.tenant_name)}`, "");
+        if (target?.biz_ids?.length) lines.push(`输入 ID：${target.biz_ids.map((id: string) => summaryText(id)).join(" · ")}`, "");
+        if (staged.started_at) lines.push(`采集时间：${staged.started_at} — ${staged.finished_at}`, "");
+        if (staged.params?.since_time || staged.params?.until_time || staged.params?.since) lines.push(
+          `日志与历史事件窗口：${staged.params.since_time ?? staged.params.since ?? "默认"} — ${staged.params.until_time ?? "默认"}`, "");
+        lines.push(`Doctor ${DOCTOR_CLI_VERSION} · ${context.plugin!.id}@${context.plugin!.version}`, "", ...navigation, "## 采集命令", "");
+      }
+      lines.push(...steps.map(step => `- ${step.kind}: ${step.status}`), "");
       return {
         children, files: {
           collection: context.writeJson("collection.json", staged),
           diagnosis: context.writeJson("diagnosis.json", { steps }),
-          summary: context.writeText("summary.md", `# Collect\n\n${steps.map(step => `- ${step.kind}: ${step.status}`).join("\n")}\n`),
+          summary: context.writeText("summary.md", lines.join("\n")),
         }
       };
     },

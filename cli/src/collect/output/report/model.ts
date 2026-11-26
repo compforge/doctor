@@ -87,6 +87,7 @@ export interface CollectionRecord {
   started_at?: string;
   finished_at?: string;
   steps?: Array<{
+    service?: string;
     id: string;
     title: string;
     status: string;
