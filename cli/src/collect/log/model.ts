@@ -127,7 +127,6 @@ export interface LogRenderStats extends LogCaptureStats {
 
 export interface LogRenderResult {
   timeline: readonly LogTimelineRecord[];
-  serviceLogs: string;
   summary: string;
   stats: LogRenderStats;
 }

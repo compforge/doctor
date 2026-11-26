@@ -2,6 +2,7 @@ import { isInteractive } from "../../terminal/policy";
 import { resolveRequestWorkloads, type RequestWorkloads } from "../request-workloads";
 import { factsLogWindows, type DataLogWindows } from "./data-window";
 import { timePaddingMs, selectLogTimeWindow, resolveLogTimeWindow, validateLogTimeWindow, type TraceLogWindow } from "./window";
+import { writeTimeline, writeServiceLogs } from "./timeline-file";
 import { isDeepStrictEqual } from "node:util";
 import { gapMessages } from "../evidence-gaps";
 import { collectLogAssociations } from "./association";
@@ -56,7 +57,7 @@ import type {
 import type { LogOutputFormat } from "./output";
 import { parseLogOutputFormat } from "./output";
 import { makeLogProbe } from "./probe/service";
-import { formatLogCaptureStats, renderLogResult, renderTimelineJsonl } from "./render";
+import { formatLogCaptureStats, renderLogResult } from "./render";
 
 import { logSummary } from "./summary";
 
@@ -450,29 +451,24 @@ export async function collectLog(
   } catch (error) {
     executions = requests.map(() => ({ status: "rejected", reason: error }));
   }
-  return contexts.map((ctx, index) => {
+  const results: LogItemResult[] = [];
+  for (const [index, ctx] of contexts.entries()) {
     const result = executions[index]!;
     try {
       if (result.status === "rejected") throw result.reason;
-      return writeLogEvidence(ctx, result.value.diagnosis, startedAt);
+      results.push(await writeLogEvidence(ctx, result.value.diagnosis, startedAt));
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       recordFailureBundle({ bundleDir: ctx.bundle.dir, collectCode: 1, reason });
-      return { status: commandContext.signal.aborted ? CommandStatus.Cancelled : CommandStatus.Failed, reason };
+      results.push({ status: commandContext.signal.aborted ? CommandStatus.Cancelled : CommandStatus.Failed, reason });
     }
-  });
+  }
+  return results;
 }
 
-function writeLogEvidence(ctx: LogCommandContext, diagnosis: LogDiagnosis, startedAt: string): LogItemResult {
+async function writeLogEvidence(ctx: LogCommandContext, diagnosis: LogDiagnosis, startedAt: string): Promise<LogItemResult> {
   const { config, bundle, log } = ctx;
   const facts = diagnosis.evidence.facts;
-  const rendered = renderLogResult(config, diagnosis);
-  if (config.associationFacts) writeFileSync(join(bundle.dir, "associations.json"), JSON.stringify(config.associationFacts, null, 2));
-  writeFileSync(join(bundle.dir, "timeline.jsonl"), renderTimelineJsonl(rendered.timeline), "utf-8");
-  writeFileSync(join(bundle.dir, "service-logs.txt"), rendered.serviceLogs, "utf-8");
-  writeFileSync(join(bundle.dir, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf-8");
-  bundle.writeSummary(rendered.summary);
-  writeFileSync(join(bundle.dir, "log-stats.json"), `${JSON.stringify(rendered.stats, null, 2)}\n`, "utf-8");
   bundle.writeCollection({
     doctorVersion: DOCTOR_CLI_VERSION,
     kubectlVersion: facts.runtime.status === "collected" ? facts.runtime.kubectlVersion : undefined,
@@ -481,6 +477,13 @@ function writeLogEvidence(ctx: LogCommandContext, diagnosis: LogDiagnosis, start
     params: { window: config.window, since: config.since, since_time: config.sinceTime, until_time: config.untilTime, errors_only: config.errorsOnly, pattern: config.pattern },
     startedAt, finishedAt: new Date().toISOString(),
   });
+  const rendered = renderLogResult(config, diagnosis);
+  if (config.associationFacts) writeFileSync(join(bundle.dir, "associations.json"), JSON.stringify(config.associationFacts, null, 2));
+  await writeTimeline(bundle.dir, rendered.timeline);
+  writeFileSync(join(bundle.dir, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf-8");
+  bundle.writeSummary(rendered.summary);
+  writeFileSync(join(bundle.dir, "log-stats.json"), `${JSON.stringify(rendered.stats, null, 2)}\n`, "utf-8");
+  await writeServiceLogs(bundle.dir, logKeys(config).map(key => key.identity.value), config.namespace, config.services);
   log(`[collect] ${config.bizId ?? "Service 日志"}: ${formatLogCaptureStats(rendered.stats, config.bizId === undefined)}`);
   const outcome = evaluateCollectOutcome([
     ...(diagnosis.evidence.facts.servicePods.status === "collected"

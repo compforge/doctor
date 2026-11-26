@@ -148,7 +148,8 @@ Service 是证据边界，读取计划是调度边界。Observation、Pod 失败
 
 - `raw/` 保留逐 Pod / Container 的原始日志，流式落盘，不把完整响应留在内存中。
 - `timeline.jsonl` 保存筛选后的逻辑事件及 Service、Pod、Container、current / previous 来源。
-- `service-logs.txt` 与 `report.html` 消费同一份时间线，分别用于文本阅读和交互排查，不重新解析 raw。
+- `service-logs.txt` 与 `report.html` 消费同一份时间线，分别用于文本阅读和交互排查。时间线写完后原子发布，TXT 写入失败时仍可从时间线生成 HTML。
+- 缺少时间线且已有采集错误时，报告展示原始原因、保留的 raw 日志数和解压后的目录。
 
 结束、失败或取消时刷出已取得的完整行。超时、字节预算或取消导致的不完整采集保留已获得内容，
 不能当作完整覆盖。current 与 previous 分开记账，previous 不可用不使 current 读取失败，原因保留在采集记录中。
@@ -161,7 +162,7 @@ Service 是证据边界，读取计划是调度边界。Observation、Pod 失败
 
 ### 离线阅读
 
-HTML 报告不依赖网络或外部静态资源。日志保存在页面内的结构化数据中，浏览器只挂载当前页，
+HTML 报告不依赖网络或外部静态资源。日志保存在页面内的结构化数据中，浏览器加载事件索引，按需解压日志正文，只挂载当前页，
 避免整份日志一次性展开为大量 DOM。搜索、Service / Pod 与时间筛选、时间分布、命中跳转和容器上下文
 只改变展示，不修改或取代时间线与 raw 证据。
 

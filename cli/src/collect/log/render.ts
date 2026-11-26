@@ -112,42 +112,6 @@ export function buildLogTimeline(
   return [...errors, ...timeline];
 }
 
-export function renderTimelineJsonl(records: readonly LogTimelineRecord[]): string {
-  return records.length ? `${records.map((record) => JSON.stringify(record)).join("\n")}\n` : "";
-}
-
-export function renderServiceLogs(
-  keysInput: string | readonly string[],
-  namespace: string,
-  services: readonly string[],
-  records: readonly LogTimelineRecord[],
-): string {
-  const keys = typeof keysInput === "string" ? [keysInput] : keysInput;
-  const lines = [
-    `keys=${keys.join(",")}`,
-    `namespace=${namespace}`,
-    `services=${services.join(",")}`,
-    "",
-  ];
-  const errors = records.filter((record) => record.kind === "collection_error");
-  const timeline = records.filter((record) => record.kind === "log");
-  if (errors.length) {
-    lines.push("===== collection errors =====", ...errors.map((record) =>
-      `[service/${record.service} pod/${record.pod}] ${record.message}`
-    ), "");
-  }
-  lines.push("===== timeline =====");
-  lines.push(...(timeline.length
-    ? timeline.map((entry) => {
-        const container = entry.container ? ` container/${entry.container}` : "";
-        const previous = entry.instance === "previous" ? " instance/previous" : "";
-        const timestamp = entry.timestamp ? `${entry.timestamp} ` : "";
-        return `[service/${entry.service} pod/${entry.pod}${container}${previous}] ${timestamp}${entry.matches?.length ? "[" + entry.matches.map(match => `${match.kind}:${match.identity.kind}=${match.identity.value}`).join(", ") + "] " : ""}${entry.message}`;
-      })
-    : ["(no matched log lines)"]));
-  return `${lines.join("\n").trimEnd()}\n`;
-}
-
 function failureSummary(facts: LogInspectionFacts): string | undefined {
   if (facts.runtime.status !== "collected") {
     return `# log 采集失败\n\n${facts.runtime.reason}\n`;
@@ -210,14 +174,8 @@ export function renderLogResult(
       record.matches = matchLogKeys(record.message.split("\n")[0]!, logKeys(config), record.service);
     }
   }
-  const serviceLogs = renderServiceLogs(
-    logKeys(config).map(key => key.identity.value),
-    config.namespace,
-    config.services,
-    timeline,
-  );
   const failed = failureSummary(facts);
-  if (failed) return { timeline, serviceLogs, summary: failed, stats };
+  if (failed) return { timeline, summary: failed, stats };
 
   const scopeLabel = config.bizId === undefined ? "全部窗口日志" : "输入 key 或已解析对象关联日志（共享对象命中不代表请求归属）";
   const lines = [
@@ -265,5 +223,5 @@ export function renderLogResult(
       ? "> 时间窗口内没有日志；可能该时段无输出或已超出 Pod 日志保留期。"
       : "> 未命中日志；可能已超出 pod 日志保留期，或 trace / 关联对象未出现在这些服务。");
   }
-  return { timeline, serviceLogs, summary: lines.join("\n"), stats };
+  return { timeline, summary: lines.join("\n"), stats };
 }
