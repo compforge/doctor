@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +10,8 @@ import { commandExitCode } from "../src/app/command";
 import { CommandContext, CommandInputError, CommandStatus } from "../src/command";
 import { perfAdapterFromCaseFactory } from "../src/perf";
 import { finalizeResult } from "./report-fixture";
+import * as policy from "../src/terminal/policy";
+import * as menu from "../src/terminal/selection";
 import { perfCommand } from "../src/perf/command";
 import { openMetricDB } from "../src/datasource/metricdb";
 import { collectPerfMetrics, formatMetricCoverageWarning, observePerf, preparePerfMetrics, perfMetricIssues, perfMetricsComplete } from "../src/perf/observations";
@@ -101,9 +103,10 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     expect(new Set(run.executions.flatMap(arm => arm.operation_runs.map(item => item.operation.id())))).toEqual(new Set([operation.id()]));
     writeRunData(run, directory);
     const mixedRun = loadRun(directory), failedRun = loadRun(directory);
-    const noProbes = await observePerf(run, directory, [], context);
+    const client = openMetricDB(context, context.profile.value.metricdb!);
+    const noProbes = await observePerf(run, directory, await preparePerfMetrics([], context, client), context.signal);
     expect(noProbes.metricsComplete).toBe(true);
-    const unavailable = await observePerf(run, directory, [operation], noSource);
+    const unavailable = await observePerf(run, directory, await preparePerfMetrics([operation], noSource, undefined), noSource.signal);
     expect(unavailable.metricsComplete).toBe(false);
     expect(unavailable.metricIssues?.join()).toContain("未配置 metricdb");
     expect(metrics).toBe(0);
@@ -122,10 +125,10 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     }
     expect(before).not.toContain('"observes"');
     expect(before).not.toContain('"calls"');
-    const prepared = await preparePerfMetrics([operation], context, undefined, [], undefined, [{
+    const prepared = await preparePerfMetrics([operation], context, client, [], undefined, [{
       service:"chat", groups:[{state:"active", count:2, intervalSeconds:60}],
     }]);
-    const automatic = await observePerf(run, directory, [operation], context, undefined, prepared);
+    const automatic = await observePerf(run, directory, prepared, context.signal);
     expect(automatic).toEqual({ metricsComplete: true, metricIssues: [] });
     const queries = run.executions[0]!.prometheus_observations!;
     expect(queries.find(query => query.step_s !== null)?.expression).toContain("[240s]");
@@ -139,19 +142,18 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     expect(existsSync(join(directory, "callgraph.json"))).toBe(false);
     const invalid = new SSEOperation({ serviceName: "chat", name: "missing-parameter", method: "POST", path: "/other",
       observes: [{ type: "metricdb", metrics: { qps: { category: "red:qps", expression: 'sum(rate(chat_total{tenant={{tenant}}}[$window]))', unit: "rps", semantics: "completed" } } }] });
-    const partial = await observePerf(mixedRun, directory, [invalid, operation], context);
+    const partial = await observePerf(mixedRun, directory, await preparePerfMetrics([invalid, operation], context, client), context.signal);
     expect(partial.metricsComplete).toBe(false);
     expect(partial.metricIssues?.join()).toContain(invalid.id());
     expect(perfMetricsComplete(mixedRun)).toBe(true);
     expect(readFileSync(writePerfReport({ run: mixedRun, outputDir: directory, ...partial }), "utf8")).toContain("指标覆盖明细");
     response = "missing";
-    const source = await (await openMetricDB(context))?.reader.connectQuery(context.signal);
-    if (!source) throw new Error("fixture Prometheus source missing");
+    const source = await client.reader.connectQuery(context.signal);
     await collectPerfMetrics(run, directory, source, context.signal);
     expect(perfMetricsComplete(run)).toBe(false);
     expect(JSON.stringify(buildCallgraph(run))).toContain('"status":"missing"');
     response = "error";
-    const failed = await observePerf(failedRun, directory, [operation], context);
+    const failed = await observePerf(failedRun, directory, prepared, context.signal);
     expect(failed.metricsComplete).toBe(false);
     expect(failed.metricIssues?.join()).toContain("查询失败");
     expect(JSON.stringify(buildCallgraph(failedRun))).toContain('"status":"error"');
@@ -240,7 +242,14 @@ test("QPS zero observes all registered observations without Kubernetes, identity
   const context=new CommandContext({}, {name:"production",configPath:"",pluginConfig:{},value:{readonly:true,
     namespace:"production",metricdb:{url:server.url.toString()}}}, {plugin});
   try {
-    const result=await perfCommand.run(context,{service:"chat",qps:"0",hold:"0.03"});
+    const interactive = spyOn(policy, "isInteractive").mockReturnValue(true);
+    const prompt = spyOn(menu, "promptListedChoice").mockImplementation(async request => {
+      expect(request.question).toContain("hold");
+      expect(Number(request.emptyValue)).toBe(60);
+      return request.match("0.03");
+    });
+    const result = await perfCommand.run(context, {service:"chat", operation:operation.id(), qps:"0"})
+      .finally(() => { prompt.mockRestore(); interactive.mockRestore(); });
     expect({status:result.status, reason:"reason" in result ? result.reason : undefined}).toEqual({status:CommandStatus.Ok,reason:undefined});
     expect(queries).toBeGreaterThanOrEqual(4);
     expect(states).toEqual(["active"]);
@@ -251,6 +260,8 @@ test("QPS zero observes all registered observations without Kubernetes, identity
     expect(JSON.parse(saved).scrape).toEqual(snapshot);
     expect(snapshot?.services?.find(s => s.service === "other")?.groups).toMatchObject([{pool:"worker-pool",intervalSeconds:60}]);
     const baseline = JSON.parse(saved).metricBaseline;
+    expect(baseline.windowSeconds).toBe(0.03);
+    expect(result.output!.run.executions[0]!.arm.load.hold_s).toBe(0.03);
     expect(baselineReads).toBe(1);
     expect(baseline.inputs.map((input: {operation:string}) => input.operation).sort()).toEqual([operation.id(),other.id()].sort());
     expect(Object.values(baseline.samples)).toEqual([{series:2,minSamples:1,maxSamples:1}]);
@@ -340,9 +351,10 @@ test("metric preflight detects backend without querying application metrics", as
   const context = new CommandContext({}, {name:"test",configPath:"",pluginConfig:{},value:{readonly:true,
     metricdb:{url:server.url.toString()}}});
   try {
-    const unavailable = await preparePerfMetrics([operation], missing);
+    const unavailable = await preparePerfMetrics([operation], missing, undefined);
     expect(unavailable.issues.join()).toContain("未配置 metricdb");
-    const ready = await preparePerfMetrics([operation], context);
+    const client = openMetricDB(context, context.profile.value.metricdb!);
+    const ready = await preparePerfMetrics([operation], context, client);
     expect(ready.issues).toEqual([]);
     expect(ready.probes.length).toBeGreaterThan(0);
     expect(calls).toBe(1);
@@ -352,12 +364,12 @@ test("metric preflight detects backend without querying application metrics", as
         category:"red:qps", unit:"rps", expression:"sum(rate(request_total[$window]))", trendWindowSeconds:90,
       }}}],
     });
-    const withScrapes = await preparePerfMetrics([operation, override], context, undefined, [], undefined, [
+    const withScrapes = await preparePerfMetrics([operation, override], context, client, [], undefined, [
       {service:"other", groups:[{state:"active", count:1, intervalSeconds:60}]},
       {service:"chat", groups:[{state:"active", count:1, intervalSeconds:15}]},
     ]);
     expect(withScrapes.probes.map(probe => probe.summaries[0]?.trendWindowSeconds)).toEqual([undefined,90]);
-    const slow = await preparePerfMetrics([override], context, undefined, [], undefined, [
+    const slow = await preparePerfMetrics([override], context, client, [], undefined, [
       {service:"chat", groups:[{state:"active",count:1,intervalSeconds:60}]},
     ]);
     expect(slow.probes[0]?.summaries[0]?.trendWindowSeconds).toBe(90);

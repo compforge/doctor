@@ -5,12 +5,16 @@ import { commandOptions, type CommandHostOption } from "../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../command/plugin-command-capabilities";
 import { renderEvidence } from "../report/evidence";
 import { replayPerf } from "./observations";
-import { runPerf } from "./index";
-import type { PerfCliOpts, PerfResult } from "./model";
+import { prepareLivePerf, runPerf, type PreparedLivePerf } from "./index";
+import { openMetricDB, resolveMetricDBConfig } from "../datasource/metricdb";
+import { resolvePerfConfig } from "./config";
+import type { PerfCliOpts, PerfConfig, PerfResult } from "./model";
 import { writePerfReport } from "./report";
 
 type PerfServiceInput = CommandInput & Omit<PerfCliOpts, CommandHostOption>;
-export const perfCommand = defineCommand<PerfServiceInput, PerfResult>({
+type PreparedPerf = { mode: "live"; live: PreparedLivePerf } | { mode: "replay"; from: string; config: PerfConfig };
+
+export const perfCommand = defineCommand<PerfServiceInput, PerfResult, PreparedPerf>({
   name: "doctor perf",
   validate: input => {
     if (input.from !== undefined && !input.from.trim()) throw new CommandInputError("--from 不能为空");
@@ -25,8 +29,11 @@ export const perfCommand = defineCommand<PerfServiceInput, PerfResult>({
     },
   }),
   prepare: async (context, input) => {
-    if (input.from) return input;
-    if (!input.prometheus?.trim() && !context.profile.value.metricdb?.url?.trim()) {
+    const opts = { ...input, ...commandOptions(context) };
+    const config = resolvePerfConfig(opts);
+    if (input.from) return { mode: "replay", from: input.from, config };
+    const metricdb = resolveMetricDBConfig(context.profile.value.metricdb, input.prometheus);
+    if (!metricdb) {
       const { name, configPath } = context.profile;
       if (!name) throw new CommandInputError("在线 perf 需要指标源。当前未启用 profile，请指定 --prometheus <url>，或使用 --config <path> 加载已配置 metricdb.url 的 profile。");
       throw new CommandInputError([
@@ -38,8 +45,12 @@ export const perfCommand = defineCommand<PerfServiceInput, PerfResult>({
         "也可在本次命令中指定 --prometheus <url>。",
       ].join("\n"));
     }
+    const client = openMetricDB(context, metricdb);
     await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.perf });
-    return input;
+    const live = await prepareLivePerf(opts, config, context.plugin, context, client);
+    if (live) return { mode: "live", live };
   },
-  run: (context, input) => input.from ? replayPerf({ ...input, ...commandOptions(context) }, context) : runPerf({ ...input, ...commandOptions(context) }, context.plugin, context),
+  run: (context, prepared) => prepared.mode === "replay"
+    ? replayPerf(prepared.from, prepared.config, context)
+    : runPerf(prepared.live, context),
 });
