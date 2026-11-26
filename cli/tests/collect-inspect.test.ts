@@ -532,6 +532,7 @@ test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选
       throw new Error(`unexpected kubectl: ${args.join(" ")}`);
     },
     exec: async (_target, command) => {
+      if (command[0] === "printenv") return result("LOG_LEVEL=debug\0");
       dependencyCommands.push(command);
       return result(JSON.stringify({
         runtimeVersion: "v22.0.0",

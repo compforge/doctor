@@ -374,8 +374,8 @@ export function fileConfigurationId(service: string, clientKey: string, path: st
 export function inspectCollectionScope(config: Pick<InspectConfig, "field" | "includeDeploymentConfig" | "includeDependencies">) {
   return {
     clock: config.field === undefined,
-    env: config.field === "env" || config.field === "config",
-    files: config.field === "config",
+    env: config.field === undefined || config.field === "env" || config.field === "config",
+    files: config.field === undefined || config.field === "config",
     secrets: config.field === undefined || config.field === "config",
     event: config.field === undefined || config.field === "event",
     hpa: config.field === undefined || config.field === "hpa",
