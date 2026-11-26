@@ -1,6 +1,6 @@
 export const LOG_REPORT_SCRIPT = `
 function mountLogViewer(viewer) {
-  const source = viewer.querySelector('.log-viewer-data');
+  const chunks = Array.from(viewer.querySelectorAll('.log-chunk'));
   const search = viewer.querySelector('.log-search');
   const serviceFilter = viewer.querySelector('.log-service-filter');
   const podFilter = viewer.querySelector('.log-pod-filter');
@@ -18,9 +18,28 @@ function mountLogViewer(viewer) {
   const errorsView = viewer.querySelector('.log-errors');
   const errorsBody = viewer.querySelector('.log-errors-body');
   const pageSize = 100;
-  let records;
+  const records = [];
+  function decode(text) {
+    return JSON.parse(fflate.strFromU8(fflate.gunzipSync(Uint8Array.from(atob(text), c => c.charCodeAt(0)))));
+  }
+  let lastChunk = -1;
+  let messages;
+  function messageOf(record) {
+    if (lastChunk !== record._chunk) {
+      messages = decode(chunks[record._chunk].content.textContent);
+      lastChunk = record._chunk;
+    }
+    return messages[record._offset];
+  }
   try {
-    records = JSON.parse(source?.textContent ?? '[]');
+    chunks.forEach((chunk, index) => {
+      decode(chunk.dataset.index).forEach((record, offset) => {
+        record._chunk = index;
+        record._offset = offset;
+        records.push(record);
+      });
+      chunk.removeAttribute('data-index');
+    });
   } catch (error) {
     list.textContent = '日志数据解析失败，请打开控制台查看错误。';
     console.error('[doctor-report] log-viewer:parse-failed', error);
@@ -33,18 +52,14 @@ function mountLogViewer(viewer) {
   const streamRecords = new Map();
   logs.forEach((record) => {
     record._timestampMs = record.timestamp ? Date.parse(record.timestamp) : NaN;
-    record._searchText = [record.service, record.pod, record.container ?? '', record.message]
-      .join(' ').toLocaleLowerCase();
     const key = record.service + '\\u0000' + record.pod + '\\u0000'
       + (record.container ?? '') + '\\u0000' + record.instance;
     const stream = streamRecords.get(key) ?? [];
+    record._stream = stream;
+    record._streamOffset = stream.length;
     stream.push(record);
     streamRecords.set(key, stream);
   });
-  const streamPositions = new Map();
-  streamRecords.forEach((stream) => stream.forEach((record, index) => {
-    streamPositions.set(record.sequence, { stream, index });
-  }));
   let filtered = logs;
   let currentPage = 0;
   let activeMatch = 0;
@@ -90,9 +105,8 @@ function mountLogViewer(viewer) {
     const service = serviceFilter.value;
     const pod = podFilter.value;
     return logs.filter((record) =>
-      (!query || record._searchText.includes(query))
-      && (!service || record.service === service)
-      && (!pod || record.pod === pod)
+      (!service || record.service === service) && (!pod || record.pod === pod)
+      && (!query || [record.service, record.pod, record.container ?? '', messageOf(record)].join(' ').toLocaleLowerCase().includes(query))
     );
   }
 
@@ -165,18 +179,15 @@ function mountLogViewer(viewer) {
   }
 
   function appendContext(container, record) {
-    const location = streamPositions.get(record.sequence);
-    if (!location) return;
-    const start = Math.max(0, location.index - 3);
-    const end = Math.min(location.stream.length, location.index + 4);
-    location.stream.slice(start, end).forEach((item) => {
+    const start = Math.max(0, record._streamOffset - 3);
+    record._stream.slice(start, record._streamOffset + 4).forEach((item) => {
       if (item.sequence === record.sequence) return;
       const line = document.createElement('div');
       line.className = 'log-context-line';
       const time = document.createElement('time');
       time.textContent = item.timestamp ? new Date(item._timestampMs).toLocaleString() : '—';
       const message = document.createElement('code');
-      message.textContent = item.message;
+      message.textContent = messageOf(item);
       line.append(time, message);
       container.append(line);
     });
@@ -215,7 +226,7 @@ function mountLogViewer(viewer) {
       correlation.textContent = '[' + record.matches.map(match => match.kind + ':' + match.identity.kind + '=' + match.identity.value).join(', ') + '] ';
       message.appendChild(correlation);
     }
-    appendHighlighted(message, record.message, search.value.trim());
+    appendHighlighted(message, messageOf(record), search.value.trim());
     const context = document.createElement('div');
     context.className = 'log-context';
     context.hidden = true;
@@ -283,7 +294,7 @@ function mountLogViewer(viewer) {
     errorsView.hidden = false;
     errorsView.querySelector('.log-error-count').textContent = String(errors.length);
     errorsBody.textContent = errors.map((record) =>
-      '[service/' + record.service + ' pod/' + record.pod + '] ' + record.message
+      '[service/' + record.service + ' pod/' + record.pod + '] ' + messageOf(record)
     ).join('\\n');
   }
   search.addEventListener('input', () => {
@@ -311,7 +322,6 @@ function mountLogViewer(viewer) {
   previousMatch.addEventListener('click', () => moveMatch(-1));
   nextMatch.addEventListener('click', () => moveMatch(1));
   applyFilters();
-  source?.remove();
   console.log('[doctor-report] log-viewer:mounted', { rows:logs.length, errors:errors.length });
 }
 

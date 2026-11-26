@@ -1,23 +1,17 @@
-import { existsSync, readFileSync } from "node:fs";
+import { batchIterator } from "@compforge/ts-stdx/iter";
+import { gzipSync } from "node:zlib";
+import zipSource from "../../../node_modules/fflate/umd/index.js" with { type: "text" };
+import { readTimeline } from "./timeline-file";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-  escapeHtml,
-  serializeInlineJson,
-  writeHtmlReport,
-} from "../output/html";
+import { escapeHtml, writeHtmlReport } from "../output/html";
 import type { CollectionRecord } from "../output/html";
 import { LOG_REPORT_SCRIPT, LOG_REPORT_STYLES } from "./html-assets";
 import { formatLogCaptureStats } from "./render";
 import type { LogKey } from "./correlation";
 import type { LogRenderStats, LogTimelineRecord } from "./model";
 
-export function parseLogTimelineJsonl(text: string): LogTimelineRecord[] {
-  return text.split("\n")
-    .filter((line) => line.trim().length > 0)
-    .map((line) => JSON.parse(line) as LogTimelineRecord);
-}
-
-export function renderLogViewer(records: readonly LogTimelineRecord[]): string {
+function renderLogViewer(chunks: readonly string[]): string {
   return `<div class="log-viewer">
     <div class="log-toolbar">
       <label class="log-search-field">搜索日志
@@ -57,15 +51,13 @@ export function renderLogViewer(records: readonly LogTimelineRecord[]): string {
       <span class="log-page-info"></span>
       <button type="button" class="log-page-next">下一页</button>
     </div>
-    <script type="application/json" class="log-viewer-data">${serializeInlineJson(records)}</script>
+    ${chunks.join("")}
   </div>`;
 }
 
-function buildLogSummary(manifest: CollectionRecord, records: readonly LogTimelineRecord[], stats?: LogRenderStats): string {
+function buildLogSummary(manifest: CollectionRecord, logCount: number, errorCount: number, stats?: LogRenderStats): string {
   const target = manifest.target ?? {};
   const params = manifest.params ?? {};
-  const logCount = records.filter((record) => record.kind === "log").length;
-  const errorCount = records.length - logCount;
   const services = Array.isArray(target.services) ? target.services.join(", ") : String(target.services ?? "");
   const keys = Array.isArray(target.keys)
     ? (target.keys as LogKey[]).map(key => `${key.kind}:${key.identity.kind}=${key.identity.value}${key.service ? ` (${key.service})` : ""}`).join(", ")
@@ -86,9 +78,53 @@ function buildLogSummary(manifest: CollectionRecord, records: readonly LogTimeli
     </ul>`;
 }
 
+function encodeChunk(values: readonly unknown[]): string {
+  return gzipSync(JSON.stringify(values), { level: 1 }).toString("base64");
+}
+
 /** 从 Bundle 内的结构化时间线生成无外部依赖、可直接双击打开的报告。 */
-export function writeLogHtmlReport(bundleDir: string, outputPath: string, profileName: string): void {
-  const records = parseLogTimelineJsonl(readFileSync(join(bundleDir, "timeline.jsonl"), "utf-8"));
+export async function writeLogHtmlReport(bundleDir: string, outputPath: string, profileName: string,
+  evidenceDir = ".", failureReason?: string): Promise<void> {
+  if (!existsSync(join(bundleDir, "timeline.jsonl"))) {
+    const errorFile = join(bundleDir, "error.log");
+    const reason = failureReason ?? (existsSync(errorFile)
+      ? readFileSync(errorFile, "utf8").match(/^reason=(.+)$/m)?.[1] : undefined);
+    if (!reason) throw new Error("日志时间线缺失：timeline.jsonl");
+    const raw = join(bundleDir, "raw");
+    const count = existsSync(raw) ? readdirSync(raw, { withFileTypes: true })
+      .filter(entry => entry.isFile() && entry.name.endsWith(".log")).length : 0;
+    writeFileSync(outputPath, `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>日志诊断</title>
+      <h1>日志时间线未生成</h1><p>${escapeHtml(reason)}</p>
+      <p>已保留 ${count} 份原始日志${count ? `，解压后见 <code>${escapeHtml(join(evidenceDir, "raw"))}/</code>` : ""}。</p></html>`,
+      { mode: 0o600 });
+    return;
+  }
+
+  // Metadata drives ordering, navigation and filters; message chunks inflate on demand in the viewer.
+  const chunks: string[] = [];
+  let logCount = 0;
+  let errorCount = 0;
+  for await (const batch of batchIterator(readTimeline(bundleDir), 512)) {
+    const metadata: Omit<LogTimelineRecord, "message">[] = [];
+    const messages: string[] = [];
+    let messageBytes = 0;
+    function flush() {
+      chunks.push(`<template class="log-chunk" data-index="${encodeChunk(metadata)}">${encodeChunk(messages)}</template>`);
+      metadata.length = 0;
+      messages.length = 0;
+      messageBytes = 0;
+    }
+    for (const { message, ...record } of batch) {
+      const bytes = Buffer.byteLength(message);
+      if (messages.length && messageBytes + bytes > 512 * 1024) flush();
+      messageBytes += bytes;
+      metadata.push(record);
+      messages.push(message);
+      if (record.kind === "log") logCount++;
+      else errorCount++;
+    }
+    flush();
+  }
   const manifest = JSON.parse(
     readFileSync(join(bundleDir, "collection.json"), "utf-8"),
   ) as CollectionRecord;
@@ -97,8 +133,8 @@ export function writeLogHtmlReport(bundleDir: string, outputPath: string, profil
   writeHtmlReport(bundleDir, outputPath, {
     title: "doctor log 日志报告",
     profileName,
-    summaryHtml: buildLogSummary(manifest, records, stats),
-    sections: [{ id: "log-timeline", title: "日志时间线", html: renderLogViewer(records) }],
-    assets: { styles: LOG_REPORT_STYLES, script: LOG_REPORT_SCRIPT },
+    summaryHtml: buildLogSummary(manifest, logCount, errorCount, stats),
+    sections: [{ id: "log-timeline", title: "日志时间线", html: renderLogViewer(chunks) }],
+    assets: { styles: LOG_REPORT_STYLES, script: zipSource + "\n" + LOG_REPORT_SCRIPT },
   });
 }

@@ -38,6 +38,7 @@
     "@compforge/spec-case": "0.0.8",
     "csv-parse": "^6.1.0",
     "@compforge/trace-harness": "0.3.2",
+    "@compforge/ts-stdx": "0.5.0",
     "@earendil-works/pi-agent-core": "0.87.1",
     "@kubernetes/client-node": "1.4.0",
     "@modelcontextprotocol/sdk": "1.29.0",

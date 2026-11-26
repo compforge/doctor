@@ -54,7 +54,7 @@ export async function finalizeCommand<Input extends CommandInput, Output>(input:
     input.context.pluginIdentity ? input.context.plugin : undefined);
   if (serialized.failed && code !== 130) code = 1;
   const renderer = new RenderContext(serialized.artifacts, input.context.profile.name,
-    (error, command) => reportError(error, { context: command, summary: "report render failed" }));
+    (error, command) => reportError(error, { context: command, summary: "report render failed" }), directory);
   const wantsReport = !["json", "text", "md", "summary", "manifest"].includes(input.delivery.format?.trim() ?? "");
   if (wantsReport && input.spec.render) {
     try {

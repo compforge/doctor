@@ -196,7 +196,7 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
         expect(previousTail).toBe("");
       }
       const html = join(root, "report.html");
-      writeLogHtmlReport(outputDir, html, "test");
+      await writeLogHtmlReport(outputDir, html, "test");
       expect(readFileSync(html, "utf8")).toContain("不按业务 ID 过滤");
       expect(readFileSync(html, "utf8")).not.toContain("trace 命中");
     } finally {

@@ -19,6 +19,7 @@
         "@compforge/perf-harness": "0.15.4",
         "@compforge/spec-case": "0.0.8",
         "@compforge/trace-harness": "0.3.2",
+        "@compforge/ts-stdx": "0.5.0",
         "@earendil-works/pi-agent-core": "0.87.1",
         "@kubernetes/client-node": "1.4.0",
         "@modelcontextprotocol/sdk": "1.29.0",
@@ -173,6 +174,8 @@
     "@compforge/spec-case": ["@compforge/spec-case@0.0.8", "", { "dependencies": { "typescript": ">=6.0.3 <7", "yaml": "^2.8.1" }, "bin": { "specgen": "dist/src/cli.js" } }, "sha512-vgk8Sp7I/bMnO6ufTlvjgogfmIWmn7PE9Bctr+vwL9sgya2ZGCnBiBT4Bev4WBZRFuEIPzaqM+K3U67COVPyfg=="],
 
     "@compforge/trace-harness": ["@compforge/trace-harness@0.3.2", "", { "dependencies": { "@compforge/harness-toolbox": "0.1.0", "fflate": "0.8.3" } }, "sha512-1VUjN2WnKYK/p2w+aWuQ+c9e2zneBmgo1M0kZ7iuZa6hY0tZWEigl5o1P5BZ1h6iUteGh10rwsBL2FLhvNurzQ=="],
+
+    "@compforge/ts-stdx": ["@compforge/ts-stdx@0.5.0", "", {}, "sha512-WWtcwAKzuxTDmbElo+HI9iq32vV+D+G48sla4eRizWeNFAmcKdzgs6RlKTYzn5Vkn2FG6KahssCOKUL8Tbk0DQ=="],
 
     "@earendil-works/chord": ["@earendil-works/chord@0.87.1", "", { "dependencies": { "esbuild": "0.28.2" } }, "sha512-bg7IkJGFcEaMqqYgOGUiq5Ky9RghpRfrlZ8I/v/1b4bBZ02A7t3E+6uhPRbadwWb/kWsnVFbZsqOKRN4a3LLCg=="],
 

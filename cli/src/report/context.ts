@@ -13,7 +13,7 @@ export class RenderContext {
   readonly failures: { command: string; error: unknown }[] = [];
 
   constructor(artifacts: readonly CommandArtifact[], readonly profileName: string,
-    private readonly onError?: (error: unknown, command: string) => void) {
+    private readonly onError?: (error: unknown, command: string) => void, private readonly bundleRoot?: string) {
     this.#artifacts = new Map(artifacts.map(artifact => [artifact.id, artifact]));
   }
 
@@ -21,6 +21,10 @@ export class RenderContext {
     const artifact = this.#artifacts.get(id);
     if (!artifact) throw new Error(`报告引用了未登记的 Artifact: ${id}`);
     return artifact;
+  }
+
+  bundleDirectory(artifact: CommandArtifact): string {
+    return this.bundleRoot ? relative(this.bundleRoot, this.artifact(artifact.id).path) || "." : ".";
   }
 
   path(artifact: CommandArtifact, file: string): string {
