@@ -7,7 +7,7 @@
 - **Workload runtime**：Service selector 当前匹配的 Pod、Container、镜像、CPU/Memory requests/limits、就绪状态、重启次数和上一次终止原因。`OOMKilled`、exit code 与 `CrashLoopBackOff` 等状态作为现场事实展示，不把资源声明误写成实际使用量，也不把退避状态误写成根因。
 - **Workload 声明**：Service 提供的可选 `description` 说明负载用途；报告和目标 Fact 保留它，缺少 Pod 时仍可查看，不将说明当作现场可用性证据。
 - **Toolchain**：Plugin 对 Service 的源码语言、执行平台、依赖管理器与构建工具声明。它用于选择通用采集器，不冒充当前 Pod 的现场事实。
-- **Deployment 配置（可选）**：用户确认后，读取 Kubernetes Deployment 为业务 Container 声明的环境配置，包括 `envFrom.configMapRef`、`env[].valueFrom.configMapKeyRef` 与显式 `env`。通常 ConfigMap 承载普通配置，显式 Deployment env 承载密码、密钥等配置。这是部署声明；现场环境变量通过 `--field env` 单独读取。
+- **Deployment 配置（可选）**：用户确认后，读取 Kubernetes Deployment 为业务 Container 声明的环境配置，包括 `envFrom.configMapRef`、`env[].valueFrom.configMapKeyRef` 与显式 `env`。通常 ConfigMap 承载普通配置，显式 Deployment env 承载密码、密钥等配置。默认 Inspect 会读取现场 Pod env，也可用 `--field env` 单独查看。
 - **Runtime dependencies（可选）**：用户确认后，由 Core 进入代表 Container，按 Toolchain 选择语言采集器并取得实际依赖与版本。依赖清单可能包含内部包名，因此与 Env 分开授权。
 部署配置报告按不区分大小写的配置名归并；字段查询保留每个来源。租户配置属于租户粒度，由
 [`doctor tenant`](tenant.md) 汇总，不与 Service/workload 配置混在同一报告中。
@@ -161,7 +161,7 @@ Bun Host 暂不支持 kubeconfig proxy 下的原生 exec，会在执行前明确
 `PodFileDataSource` 一次 exec 读取整组。同一 source 只定位一次目标；不同 source 的定位查询
 可以复用本次 Inspect 已取得的观测。根 Command 统一复用与释放客户端。
 
-`--field config` 同时查询 Pod env 和声明的 YAML/JSON 文件。每个文件最多 1 MiB，
+默认 Inspect（含 Collect 子命令）和 `--field config` 均采集选中 Workload 的 Pod env 和声明的 YAML/JSON 文件。归档保留配置路径与来源，掩盖可识别的凭据与 URL 查询参数。每个文件最多 1 MiB，
 每组总预算为路径数 × 1 MiB，整组读取限时 15 秒（含排队）；嵌套键展开为 `sandbox.provider.config.endpoint`，数组为 `items[0]`。
 结果保留 Service、Workload、Pod、Container 和文件路径，不合并文件/Secret overlay/env 的优先级，
 也不导入 Settings 或声称得到应用解析后的最终配置。无文件声明的 Service 仍查询 Pod env。

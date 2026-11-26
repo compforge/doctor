@@ -2,7 +2,7 @@ import { INSPECT_PROBE_KIND, requireInspectProbeExtension } from "@compforge/doc
 import { makePluginInspectProbe } from "./plugin-inspect";
 import { makePodClockProbes } from "./pod-clock";
 import { inspectCollectionScope } from "../model";
-import { fileDataSources, secretDataSources } from "@compforge/doctor-plugin";
+import { secretDataSources } from "@compforge/doctor-plugin";
 import { makeSecretConfigurationProbe } from "./secret-configuration";
 import { makeFileConfigurationProbe } from "./file-configuration";
 import { workloadProbeProviders } from "../../../plugin/workload-extensions";
@@ -14,7 +14,7 @@ import type {
   InspectFacts,
   InspectObservation,
 } from "../model";
-import { containerEnvironmentTargets } from "../fact/inspect";
+import { containerEnvironmentTargets, inspectFileSources } from "../fact/inspect";
 import { makeContainerEnvironmentProbe } from "./container-environment";
 import { makeServiceConfigProbe } from "./service-environment";
 import { makeDependencyInventoryProbe } from "./dependencies";
@@ -40,7 +40,7 @@ export function makeInspectProbes(
     ...serviceProbes,
     ...(scope.clock ? makePodClockProbes(facts) : []),
     ...(scope.secrets ? config.services.flatMap(service => secretDataSources(catalog.find(service)).map(source => makeSecretConfigurationProbe(service, source))) : []),
-    ...(scope.files ? config.services.flatMap(service => fileDataSources(catalog.find(service)).map(source => makeFileConfigurationProbe(service, source))) : []),
+    ...(scope.files ? config.services.flatMap(service => inspectFileSources(catalog.find(service)).map(source => makeFileConfigurationProbe(service, source))) : []),
     ...(scope.env ? containerEnvironmentTargets(facts).targets.map(makeContainerEnvironmentProbe) : []),
     ...(facts.serviceTargets.status === "collected"
       ? Object.values(facts.serviceTargets.services).flatMap((service) =>

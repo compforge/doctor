@@ -1,3 +1,4 @@
+import { inspectCollectionScope } from "./model";
 import { detectPodClocks } from "./clock";
 import { evidenceGaps, type EvidenceGapFinding } from "../evidence-gaps";
 import { containerEnvironmentTargets } from "./fact/inspect";
@@ -390,7 +391,8 @@ export function detectInspectEvidenceGaps(
     }
   }
   findings.push(...evidenceGaps("runtime-dependencies", dependencyMissing, evidence));
-  if (scope?.field === "env" || scope?.field === "config") {
+  const collection = inspectCollectionScope(scope ?? {});
+  if (collection.env) {
     const { targets, missing } = containerEnvironmentTargets(evidence.facts);
     for (const target of targets) {
       const observation = evidence.observations.find(item => item.kind === "container-environment"
@@ -401,7 +403,7 @@ export function detectInspectEvidenceGaps(
     }
     findings.push(...evidenceGaps("container-environment", missing, evidence));
   }
-  if (scope?.field === "config") {
+  if (collection.files) {
     const missing: string[] = [];
     if (evidence.facts.serviceTargets.status !== "collected") missing.push(evidence.facts.serviceTargets.reason);
     else for (const service of Object.values(evidence.facts.serviceTargets.services)) {

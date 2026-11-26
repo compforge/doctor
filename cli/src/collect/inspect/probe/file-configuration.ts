@@ -1,3 +1,4 @@
+import { redactConfigText, sensitiveConfigKey } from "./config-value";
 import { fileConfigurationId } from "../model";
 import { extname } from "node:path";
 import { parseDocument } from "yaml";
@@ -41,11 +42,16 @@ export function parseFileConfiguration(bytes: Uint8Array, path: string): Record<
       } else {
         const entries = Object.entries(item);
         if (!entries.length) put(key, {});
-        for (const [name, child] of entries) visit(child, key ? `${key}.${name}` : name, depth + 1);
+        for (const [name, child] of entries) {
+          const path = key ? `${key}.${name}` : name;
+          const field = item as Record<string, unknown>;
+          if (name === "value" && typeof field.name === "string" && sensitiveConfigKey(field.name)) put(path, "[redacted]");
+          else visit(child, path, depth + 1);
+        }
       }
       ancestors.delete(item);
     } else if (item === null || typeof item === "string" || typeof item === "boolean" || typeof item === "number" && Number.isFinite(item)) {
-      put(key, item);
+      put(key, sensitiveConfigKey(key) ? "[redacted]" : typeof item === "string" ? redactConfigText(key, item) : item);
     } else throw new Error(`配置包含不支持的值：${path}`);
   };
   visit(value, "", 0);

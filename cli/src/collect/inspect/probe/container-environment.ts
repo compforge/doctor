@@ -1,3 +1,4 @@
+import { redactConfigText } from "./config-value";
 import { DoctorError } from "@compforge/doctor-plugin";
 import { acquisitionFailure } from "../../../command/diagnostic";
 import type { ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
@@ -20,7 +21,8 @@ export function parseContainerEnvironment(raw: string): Record<string, string> {
   return Object.fromEntries(entries.map(entry => {
     const separator = entry.indexOf("=");
     if (separator <= 0) throw new Error("Pod Env 输出含无效条目");
-    return [entry.slice(0, separator), entry.slice(separator + 1)];
+    const name = entry.slice(0, separator);
+    return [name, redactConfigText(name, entry.slice(separator + 1))];
   }));
 }
 

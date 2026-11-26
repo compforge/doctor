@@ -3,9 +3,14 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createServiceCatalog, fileDataSource, describeService, type ServiceDefinition } from "@compforge/doctor-plugin";
+import { createCollectCommand } from "../src/collect/composite";
+import { finalizeResult } from "./report-fixture";
+import { readBundleIndex, readBundleText } from "./bundle-fixture";
 import { examplePlugin } from "../../plugins/example/src";
 import { CommandContext } from "../src/command";
 import { runCollectInspect, type InspectDiagnosis } from "../src/collect/inspect";
+import { parseContainerEnvironment } from "../src/collect/inspect/probe/container-environment";
+import { inspectFileSources } from "../src/collect/inspect/fact/inspect";
 import { parseFileConfiguration } from "../src/collect/inspect/probe/file-configuration";
 import type { ExecResult, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 
@@ -26,13 +31,20 @@ test("configuration parsing preserves nested paths and literals without echoing 
   expect(() => parseFileConfiguration(new TextEncoder().encode('a.b: 1\na: {b: 2}'), "/config.yaml")).toThrow("冲突");
 });
 
-for (const scenario of ["ok", "empty", "missing", "invalid", "oversized", "denied", "env-only", "group-ok", "mixed-missing", "mixed-invalid", "mixed-oversized"] as const) {
+test("Pod env preserves ordinary literals and masks credentials in embedded env lists", () => {
+  const raw = 'LIST=[1,{"name":"API_TOKEN","value":"private-fixture-value"}]\0BIND=[::1]:8090\0JSON={ "enabled": true }\0';
+  expect(parseContainerEnvironment(raw)).toEqual({
+    LIST: '[1,{"name":"API_TOKEN","value":"[redacted]"}]', BIND: "[::1]:8090", JSON: '{ "enabled": true }',
+  });
+});
+
+for (const scenario of ["default-collect", "ok", "empty", "missing", "invalid", "oversized", "denied", "env-only", "group-ok", "mixed-missing", "mixed-invalid", "mixed-oversized"] as const) {
   test(`Inspect config collects file sources and Pod env, retaining provenance and gaps: ${scenario}`, async () => {
     const directory = mkdtempSync(join(tmpdir(), "inspect-config-test-"));
     const config = join(directory, "profile.yaml"); writeFileSync(config, "");
     let resolutions = 0;
     let fileReads = 0;
-    const grouped = scenario.startsWith("mixed-") || scenario === "group-ok";
+    const grouped = scenario === "default-collect" || scenario.startsWith("mixed-") || scenario === "group-ok";
     const paths = grouped ? ["/etc/config.yaml", "/etc/secret.yaml"] : ["/etc/config.yaml"];
     const file = fileDataSource(paths, {
       workload: "api", description: "mounted configuration", access: { kubernetes: [{
@@ -45,6 +57,7 @@ for (const scenario of ["ok", "empty", "missing", "invalid", "oversized", "denie
       workloads: [{ name: "api", platform: "kubernetes", container: "main", location: { kind: "labels", labels: { app: "api" } } }],
       dataSources: [file],
     };
+    if (scenario === "default-collect") expect(inspectFileSources({ ...service, workloads: [] })).toEqual([]);
     const plugin = { ...examplePlugin, services: createServiceCatalog([service]) };
     expect(resolutions).toBe(0);
     expect(file).not.toHaveProperty("id"); expect(file).not.toHaveProperty("kind");
@@ -62,7 +75,8 @@ for (const scenario of ["ok", "empty", "missing", "invalid", "oversized", "denie
       exec: async (target, args, options) => {
         expect(target).toMatchObject({ pod: "api-0", container: "main" });
         if (scenario === "denied") return { ...response(), ok: false, exitCode: 1, stderr: "pods/exec is forbidden" };
-        if (args[0] === "printenv") return response("SANDBOX_MODE=pod\0OTHER=keep-in-evidence\0");
+        if (args[0] === "date") return response(`${Date.now() / 1000}\n+0000\nUTC`);
+        if (args[0] === "printenv") return response("SANDBOX_MODE=pod\0OTHER=keep-in-evidence\0AWS_SECRET_ACCESS_KEY=private-fixture-value\0");
         fileReads++;
         expect(args.slice(0, 2)).toEqual(["sh", "-c"]);
         expect(args.slice(3)).toEqual(["file-source", "1048577", ...paths]);
@@ -70,7 +84,8 @@ for (const scenario of ["ok", "empty", "missing", "invalid", "oversized", "denie
         const raw = scenario === "invalid" ? "password: [private-value" : scenario === "empty" ? "{}" : scenario === "oversized" ? "x".repeat(1048577) : yaml;
         options?.onStdoutBytes?.(Buffer.from(`0 ${Buffer.concat([Buffer.from(raw), Buffer.from([0]), Buffer.from("000")]).toString("base64")}\n`));
         if (grouped) {
-          const body = scenario === "mixed-invalid" ? "password: [private-value" : scenario === "mixed-oversized" ? "x".repeat(1048577) : "extra: true";
+          const body = scenario === "mixed-invalid" ? "password: [private-value" : scenario === "mixed-oversized" ? "x".repeat(1048577) : scenario === "default-collect"
+            ? "runtime:\n  sandbox:\n    sidecars:\n    - name: helper\n      env:\n        SNAPSHOT_S3_ENDPOINT: https://storage.example\n        AWS_SECRET_ACCESS_KEY: private-fixture-value" : "extra: true";
           const status = scenario === "mixed-missing" ? "001" : "000";
           options?.onStdoutBytes?.(Buffer.from(`1 ${Buffer.concat([Buffer.from(body), Buffer.from([0]), Buffer.from(status)]).toString("base64")}\n`));
         }
@@ -79,6 +94,34 @@ for (const scenario of ["ok", "empty", "missing", "invalid", "oversized", "denie
     };
     const context = new CommandContext({}, undefined, { plugin });
     try {
+      if (scenario === "default-collect") {
+        const command = createCollectCommand(async () => {
+          const child = await context.artifacts.capture(() => runCollectInspect({
+            namespace: "demo", services: ["api"], deploymentConfig: false, dependencies: false, config,
+          }, plugin, context, executor));
+          return { ...child.value, artifacts: child.artifacts };
+        });
+        const input = { bizIds: [], kinds: ["inspect" as const] };
+        const result = await command.run(context, input);
+        const output = join(directory, "bundle");
+        await finalizeResult(context, command, result, { output, format: "bundle" }, input);
+        const archive = output + ".tar.gz";
+        const child = readBundleIndex(archive, "bundle").children![0]!;
+        const evidence = readBundleText(archive, join("bundle", dirname(child.manifest), "raw/observations.json"));
+        expect(evidence).not.toContain("private-fixture-value");
+        const observations = JSON.parse(evidence) as InspectDiagnosis["evidence"]["observations"];
+        expect(observations).toContainEqual(expect.objectContaining({
+          kind: "container-environment", pod: "api-0", values: expect.objectContaining({ SANDBOX_MODE: "pod", AWS_SECRET_ACCESS_KEY: "[redacted]" }),
+        }));
+        expect(observations).toContainEqual(expect.objectContaining({
+          kind: "file-configuration", path: "/etc/secret.yaml", pod: "api-0", values: expect.objectContaining({
+            "runtime.sandbox.sidecars[0].env.SNAPSHOT_S3_ENDPOINT": "https://storage.example",
+            "runtime.sandbox.sidecars[0].env.AWS_SECRET_ACCESS_KEY": "[redacted]",
+          }),
+        }));
+        expect(fileReads).toBe(1);
+        return;
+      }
       await runCollectInspect({ namespace: "demo", services: ["api"], field: scenario === "env-only" ? "env" : "config",
         search: "SaNdBoX", config, format: "summary" }, plugin, context, executor);
       const artifact = context.artifacts.list()[0]!;

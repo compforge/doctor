@@ -3,6 +3,7 @@ import { fileConfigurationId, inspectCollectionScope } from "../model";
 import { workloadProbeProviders } from "../../../plugin/workload-extensions";
 import type {
   ServiceCatalog,
+  ServiceDefinition,
   Toolchain,
 } from "@compforge/doctor-plugin";
 import {
@@ -35,6 +36,11 @@ import type {
   InspectPodContainerFact,
   InspectServiceTargetFact,
 } from "../model";
+
+/** File sources follow the workloads selected for this Inspect, including request-scoped catalogs. */
+export function inspectFileSources(service: ServiceDefinition | undefined) {
+  return fileDataSources(service).filter(source => service?.workloads.some(workload => workload.name === source.workload));
+}
 
 function commandReason(ok: boolean, stderr: string): string | undefined {
   return ok ? undefined : stderr.trim().split("\n")[0] || "kubectl 读取失败";
@@ -414,7 +420,7 @@ export function makeServiceTargetsInspect(
         services[serviceName] = {
           service: serviceName,
           toolchain: declaredService.toolchain,
-          files: scope.files ? fileDataSources(declaredService).flatMap(source => source.paths.map(path => ({
+          files: scope.files ? inspectFileSources(declaredService).flatMap(source => source.paths.map(path => ({
             id: fileConfigurationId(serviceName, source.clientKey, path), path, workload: source.workload,
           }))) : undefined,
           workloads,

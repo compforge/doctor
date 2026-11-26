@@ -204,7 +204,7 @@ export async function runCollectInspect(
   const environmentNeeds = (scope.env || scope.clock) ? [{
     requirement: "preferred" as const,
     rule: { verb: "get" as const, resource: "pods/exec" },
-    purpose: scope.clock ? "逐个 Pod 的业务 Container 采集时钟样本" : "逐个 Pod 的业务 Container 读取实际环境变量",
+    purpose: scope.clock ? "逐个 Pod 的业务 Container 采集时钟和实际环境变量" : "逐个 Pod 的业务 Container 读取实际环境变量",
     fallback: "无法读取时保留对应 Pod 的证据缺口",
   }] : [];
   const dependencyNeeds = scope.dependencies ? [{
