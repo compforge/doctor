@@ -145,4 +145,4 @@ readonly 工具策略与本地执行沙箱属于明确的后续安全能力，�
 - [CLI 开发约定](../cli/AGENTS.md) — 主路径、执行模型与职责边界
 - [配置与目标](../cli/docs/configuration.md) — Doctor Host/Target 与有效目标传递
 - `../cli/docs/plugin.md` — Plugin 安装、精确版本选择与 Skill 分发
-- `../cli/docs/naming.md` — Session/Controller 的内外命名规则
+- [Chat 命名](../cli/docs/commands/chat.md#命名) — Session/Controller 的内外命名规则
