@@ -285,6 +285,7 @@ export function summarizeS3Objects(input: {
 
 export async function scanS3Objects(input: {
   client: Pick<S3Client, "listObjects" | "signal">;
+  signal?: AbortSignal;
   bucket: string;
   prefix?: string;
   priorityPrefix?: string;
@@ -320,7 +321,8 @@ export async function scanS3Objects(input: {
       stoppedReason = "time-limit";
       return undefined;
     }
-    const signal = AbortSignal.timeout(Math.min(10_000, remainingMs));
+    const deadlineSignal = AbortSignal.timeout(Math.min(10_000, remainingMs));
+    const signal = input.signal ? AbortSignal.any([input.signal, deadlineSignal]) : deadlineSignal;
     try {
       const page = await input.client.listObjects(input.bucket, {
         ...options,
@@ -342,6 +344,7 @@ export async function scanS3Objects(input: {
         nextContinuationToken: page.continuationToken };
     } catch (error) {
       // Root cancellation is not a scan-budget limit and must not turn into a successful partial scan.
+      input.signal?.throwIfAborted();
       input.client.signal.throwIfAborted();
       if (!signal.aborted && !(error instanceof Error && error.name === "AbortError")) throw error;
       stoppedReason = "time-limit";

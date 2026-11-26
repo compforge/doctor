@@ -39,11 +39,11 @@ export async function finalizeCommand<Input extends CommandInput, Output>(input:
   const cleanupStartedAt = Date.now();
   try { await disposeWithinBudget(() => input.context.disposeClients(), input.cleanupTimeoutMs); }
   catch (error) {
-    reportError(error, { context: input.spec.name, summary: "client cleanup failed" }); code = 1;
+    reportError(error, { context: input.spec.name, summary: "client cleanup failed" });
+    if (code !== 130) code = 1;
     result = { ...result, diagnostics: [...(result.diagnostics ?? []),
       executionDiagnostic(error, { phase: "cleanup", target: "shared clients", startedAt: cleanupStartedAt })] };
   }
-  if (input.context.signal.aborted) code = 130;
   // Non-reporting commands have no file output unless explicitly requested.
   if (!result.artifacts.length && result.output === undefined && !(result.diagnostics?.length && input.spec.serialize) && input.delivery.format !== "manifest") return code;
   const directory = mkdtempSync(join(tmpdir(), "doctor-result-"));
@@ -77,5 +77,5 @@ export async function finalizeCommand<Input extends CommandInput, Output>(input:
   if (delivered && code === 0 && !serialized.failed && !renderer.failures.length) {
     cleanupTemporaryArtifacts(input.context.artifacts.list().map(artifact => artifact.path));
   }
-  return input.context.signal.aborted ? 130 : delivered ? code : 1;
+  return delivered || code === 130 ? code : 1;
 }

@@ -18,6 +18,7 @@ import {
   type KubernetesInspection,
 } from "./inspect/kubernetes";
 import type { Profile } from "./profile";
+import { currentCommandSignal } from "./execution-scope";
 import { CommandArtifacts } from "./artifacts";
 
 export interface CommandInspection {
@@ -93,7 +94,10 @@ export class CommandContext {
   #hostPromise?: Promise<DoctorHostInfo>;
   #kubernetesPromise?: Promise<KubernetesInspection>;
   #plugin?: PluginDefinition;
-  readonly signal: AbortSignal;
+  readonly runSignal: AbortSignal;
+  /** The active phase supplies the signal used by command code and its host adapters. */
+  get signal(): AbortSignal { return currentCommandSignal(this.clients) ?? this.runSignal; }
+  get clientSignal(): AbortSignal { return this.#clients.signal; }
   readonly clients: Pick<ClientManager, "get" | "create">;
   readonly #clients: ClientManager;
 
@@ -118,9 +122,9 @@ export class CommandContext {
   ) {
     this.limits = { podLogBytes: new PodLogByteBudget(DEFAULT_POD_LOG_CAPTURE_POLICY.maxTotalBytes), podLogs: new ConcurrencyPool(profile.value.log?.concurrency ?? DEFAULT_POD_LOG_CAPTURE_POLICY.concurrency) };
     this.#plugin = options.plugin;
-    this.signal = options.signal
+    this.runSignal = options.signal
       ? AbortSignal.any([options.signal, this.#controller.signal]) : this.#controller.signal;
-    this.#clients = new ClientManager(this.signal);
+    this.#clients = new ClientManager();
     this.clients = { get: source => this.#clients.get(source), create: source => this.#clients.create(source) };
   }
 

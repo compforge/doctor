@@ -14,6 +14,10 @@ Execute   执行领域工作，返回状态和本次调用的 Artifact 引用
 Finalize  根入口释放共享 Client，序列化本地结果，按格式渲染、交付并设置退出状态
 ```
 
+用户中断作用于 Execute。Prepare 期间收到中断时，当前准备完成后跳过领域 run，进入收尾。
+执行中的业务动作逐次接收取消信号，已产生副作用的动作在返回前按自己的时限完成必要清理。
+共享 Client 与连接由根 ClientManager 持有，Finalize 统一销毁；此时收到中断仍完成交付，保留已确定的业务状态。
+
 | 执行路径 | Prepare 与 Execute 的分工 |
 |---|---|
 | [Collect](collect.md) | 确定目标与贡献项。执行时先完成选中的 Inspect 并冻结 Facts，再生成 Probe 计划，最后由 Detector 消费已取得的 Evidence。 |

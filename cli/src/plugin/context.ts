@@ -11,7 +11,7 @@ import { KubernetesClient } from "@compforge/harness-toolbox/kubernetes/client";
 import type { NamespaceResources, ResourceRequestOptions } from "@compforge/harness-toolbox/kubernetes/resources";
 import { KubectlExecutor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { currentCommandClients, currentCommandSignal, onCommandDispose } from "../command/execution-scope";
-import { bindService, type ServiceDefinition } from "@compforge/doctor-plugin";
+import { bindService, connectionDataSources, type ServiceDefinition } from "@compforge/doctor-plugin";
 import type {
   CapabilityWithAccess,
   DatabaseIdentity,
@@ -252,9 +252,15 @@ export function createPluginContext(
         // Acquire dependencies first; finalization then closes consumers before Kubernetes transports.
         const kubernetes = options.environment.kind === "kubernetes" ? await cluster() : undefined;
         signal.throwIfAborted();
+        // These read protocols only accept cancellation at construction. Preserve run cancellation
+        // for their queries while keeping the shared Kubernetes transport under the root manager.
+        const phaseSignal = root === currentCommandClients() ? currentCommandSignal() : undefined;
+        const legacyRead = phaseSignal && connectionDataSources(options.service).some(item =>
+          (item.kind === "db" || item.kind === "redis" || item.kind === "vdb") && item.source?.clientKey === source.clientKey);
         return clients.get({
           clientKey: `${namespace}:${source.clientKey}`,
-          createClient: (_clients, rootSignal) => source.createClient(access(rootSignal, kubernetes)),
+          createClient: (_clients, rootSignal) => source.createClient(access(legacyRead
+            ? AbortSignal.any([rootSignal, phaseSignal]) : rootSignal, kubernetes)),
         });
       },
     },

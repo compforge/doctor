@@ -23,7 +23,7 @@ export function makeSecretConfigurationProbe(service: string, source: ServiceSec
         try {
           const client = await context.clients.get(source);
           Object.assign(observation, client.target);
-          Object.assign(observation, await client.read(), { status: "collected" });
+          Object.assign(observation, await client.read({ signal: ctx.command.signal }), { status: "collected" });
         } finally { await context.dispose(); }
       } catch (error) {
         ctx.command.signal.throwIfAborted();

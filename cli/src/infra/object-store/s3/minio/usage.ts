@@ -67,7 +67,7 @@ export async function getMinioBucketUsage(
     ];
     const failures: string[] = [];
     for (const path of paths) {
-      const response = await requestMinioMetrics({ http: connection.http, path, credentials: connection.credentials, signal: controller.signal });
+      const response = await requestMinioMetrics({ http: connection.http, path, credentials: connection.credentials, signal: connection.signal ? AbortSignal.any([connection.signal, controller.signal]) : controller.signal });
       if (response.status < 200 || response.status >= 300) {
         failures.push(`${path}=HTTP ${response.status}`);
         continue;

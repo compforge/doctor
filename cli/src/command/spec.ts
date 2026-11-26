@@ -1,7 +1,7 @@
 import { executionDiagnostic, diagnosticMessage, type ExecutionDiagnostic } from "./diagnostic";
 import { useLogger } from "../terminal/log";
 import type { CommandContext } from "./context";
-import { inCommandScope } from "./execution-scope";
+import { inCommandScope, withRunSignal } from "./execution-scope";
 import type { CommandResult } from "./result";
 import { CommandStatus } from "./status";
 import { withInteractionOptions } from "../terminal/policy";
@@ -43,6 +43,8 @@ export type Command<Input extends CommandInput, Output> = Omit<CommandSpec<Input
  * @spec CLI and parent commands call the same checked run entry point.
  * @spec Prepare and run share one invocation scope and one idempotency decision; only ready work runs.
  * @spec Every command prepares its own requirements; aggregate calls prepare children independently.
+ * @rule User interrupts stop domain work. Preparation and invocation cleanup share the root client lifetime.
+ * @link cli/docs/command.md#三阶段生命周期
  * Each invocation owns its artifacts and temporary cleanup; root resources and environment are shared.
  */
 export function defineCommand<Input extends CommandInput, Output, Prepared = Input>(
@@ -59,31 +61,30 @@ export function defineCommand<Input extends CommandInput, Output, Prepared = Inp
         let completed: CommandResult<Output> | undefined;
         const captured = await context.artifacts.capture(async (): Promise<CommandResult<Output>> => {
           try {
-            const result = await inCommandScope(context.signal, async (): Promise<CommandResult<Output>> => {
-              context.signal.throwIfAborted();
+            return await inCommandScope(context.clientSignal, async (): Promise<CommandResult<Output>> => {
               const prepared = await spec.prepare(context, input);
-              context.signal.throwIfAborted();
-              if (prepared === undefined) {
-                context.cancel();
-                return { status: CommandStatus.Cancelled, artifacts: [] };
+              if (prepared === undefined) context.cancel();
+              if (prepared === undefined || context.runSignal.aborted) {
+                completed = { status: CommandStatus.Cancelled, artifacts: [] };
+                return completed;
               }
               phase = "run";
               startedAt = Date.now();
-              const result = await spec.run(context, prepared);
-              completed = result;
+              const result = await withRunSignal(context.runSignal, () => spec.run(context, prepared));
+              completed = context.runSignal.aborted ? { ...result, status: CommandStatus.Cancelled } : result;
               context.artifacts.add(result.artifacts);
               if (result.status === CommandStatus.Cancelled) context.cancel();
-              return result;
+              return completed;
             }, context.clients, { diagnostics });
-            return context.signal.aborted ? { ...result, status: CommandStatus.Cancelled } : result;
           } catch (error) {
+            const cancelled = completed ? completed.status === CommandStatus.Cancelled : phase === "run" && context.runSignal.aborted;
             if (!completed || !diagnostics.some(item => item.phase === "cleanup")) {
-              diagnostics.push(executionDiagnostic(error, { phase: completed ? "cleanup" : phase, target: spec.name, startedAt, kind: context.signal.aborted ? "cancelled" : undefined }));
+              diagnostics.push(executionDiagnostic(error, { phase: completed ? "cleanup" : phase, target: spec.name, startedAt, kind: cancelled ? "cancelled" : undefined }));
             }
-            if (!context.signal.aborted) context.options.onError?.(error, spec.name);
+            if (!cancelled) context.options.onError?.(error, spec.name);
             return {
               ...completed,
-              status: context.signal.aborted ? CommandStatus.Cancelled : CommandStatus.Failed,
+              status: cancelled ? CommandStatus.Cancelled : CommandStatus.Failed,
               artifacts: completed?.artifacts ?? [], error, reason: diagnosticMessage(error),
             };
           }
@@ -94,17 +95,19 @@ export function defineCommand<Input extends CommandInput, Output, Prepared = Inp
           diagnostics: [...(captured.value.diagnostics ?? []), ...diagnostics] };
       };
       try {
-        context.signal.throwIfAborted();
         await spec.validate?.(input);
         const key = input.idempotencyKey?.();
-        const result = key === undefined ? await execute() : await context.runIdempotent(spec, key, execute, () => {
+        if (key === undefined) return await execute();
+        const cancelledBeforeLookup = context.runSignal.aborted;
+        const result = await context.runIdempotent(spec, key, execute, () => {
           useLogger().info(`[${spec.name}] 复用同一范围的采集结果（进行中则等待）`);
         });
-        return context.signal.aborted ? { ...result, status: CommandStatus.Cancelled } : result;
+        return cancelledBeforeLookup && result.status !== CommandStatus.Failed
+          ? { ...result, status: CommandStatus.Cancelled } : result;
       } catch (error) {
-        if (!context.signal.aborted) context.options.onError?.(error, spec.name);
+        context.options.onError?.(error, spec.name);
         return {
-          status: context.signal.aborted ? CommandStatus.Cancelled : CommandStatus.Failed,
+          status: CommandStatus.Failed,
           artifacts: [], error, reason: error instanceof Error ? error.message : String(error),
         };
       }

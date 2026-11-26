@@ -10,7 +10,7 @@ import { crc32 } from "node:zlib";
 import { DirectTransport, PortForwardTransport } from "@compforge/harness-toolbox/transport";
 import { HttpClient } from "@compforge/harness-toolbox/http";
 import { probeChunkLimit, S3Wire } from "../src/collect/s3/chunk";
-import { inspectS3 } from "../src/collect/s3/inspect";
+import { inspectS3, prepareInspection } from "../src/collect/s3/inspect";
 import { resolveS3Request } from "../src/collect/s3/input";
 import { startS3Fixture } from "./s3-fixture";
 
@@ -54,7 +54,8 @@ test("inspect verifies the wire frame and cleans the returned version at the exa
   const wire = new S3Wire(http, new URL("/bucket/", fixture.target.endpoint), fixture.target);
   try {
     const request = resolveS3Request({ action: "inspect", path: "svc/bucket/business" });
-    const result = await inspectS3(fixture.client, request, async () => wire, async () => ({ approved: true }));
+    const result = await inspectS3(fixture.client, request, fixture.client.signal,
+      await prepareInspection("bucket", request.timeoutMs, async () => wire), async () => ({ approved: true }));
     expect(result).toMatchObject({ errors: {}, bucketHead: { httpStatus: 200, region: "test-region", server: "test-store" },
       object: { size: 37 }, versioning: "enabled", chunk: { maxChunkBytes: 16777216, stoppedReason: "exact" } });
     expect(result.chunk?.samples.at(-1)?.requestId).toBe("rejected-frame");
@@ -70,6 +71,8 @@ test("bare inspect defers the bucket to service configuration", () => {
 
 test.each([
   ["one source", undefined, true],
+  ["interruption during client creation", "prepare-interrupt", false],
+  ["interruption after PUT", "interrupt", true],
   ["equivalent sources", "same", true],
   ["different default buckets", "bucket", false],
   ["different default buckets with an explicit bucket", "override", true],
@@ -79,12 +82,35 @@ test.each([
   const root = mkdtempSync(join(tmpdir(), "s3-inspect-cli-"));
   const previous = process.cwd(), exitCode = process.exitCode;
   const methods: string[] = [];
-  const fixture = await startS3Fixture((url, request) => {
+  let probePath: string | undefined;
+  const fixture = await startS3Fixture(async (url, request) => {
+    if (variant === "interrupt") {
+      const path = new URL(url);
+      if (request.method === "PUT") {
+        methods.push("PUT");
+        await request.arrayBuffer();
+        probePath = path.pathname;
+        return new Response(null, { headers: { "x-amz-version-id": "fixture-v1" } });
+      }
+      if (request.method === "DELETE") {
+        methods.push("DELETE");
+        expect(path.pathname).toBe(probePath!);
+        expect(path.searchParams.get("versionId")).toBe("fixture-v1");
+        return new Response(null, { status: 204 });
+      }
+    }
     methods.push(request.method);
     if (request.method === "PUT") return new Response("<Error><Code>AccessDenied</Code></Error>", { status: 403 });
     if (new URL(url).searchParams.has("versioning")) return new Response("<VersioningConfiguration/>");
     return new Response(null, { headers: { "x-amz-bucket-region": "us-east-1" } });
   });
+  // Cancel after the real PUT reply is available to the probe, before its validation HEAD.
+  const wireRequest = S3Wire.prototype.request;
+  const stop = variant === "interrupt" ? spyOn(S3Wire.prototype, "request").mockImplementation(async function (this: S3Wire, ...args) {
+    const response = await wireRequest.apply(this, args);
+    if (args[0] === "PUT") process.emit("SIGINT");
+    return response;
+  }) : undefined;
   const forward = variant === "namespace" ? spyOn(PortForwardTransport.prototype, "connect").mockImplementation(async target => {
     expect(target.host).toBe("storage");
     return { host: "127.0.0.1", port: Number(new URL(fixture.target.endpoint).port) };
@@ -102,11 +128,15 @@ test.each([
   });
   try {
     process.chdir(root);
-    const names = variant ? ["svc", "second"] : ["svc"];
+    const names = variant && !variant.includes("interrupt") ? ["svc", "second"] : ["svc"];
     const plugin = { id: "fixture", version: "1.0.0", services: createServiceCatalog(names.map(name => ({
       name, workloads: [kubernetesServiceWorkload(name === "svc" ? "actual-k8s-svc" : name)],
       component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixture" } },
       dataSources: [{ kind: "s3", id: "files", backend: "s3-compatible", source: s3DataSource("local", async ctx => {
+        if (variant === "prepare-interrupt") {
+          process.emit("SIGINT");
+          ctx.signal.throwIfAborted();
+        }
         const other = name === "second";
         expect(ctx.target.namespace).toBe(variant === "namespace" && other ? "other-namespace" : "vke-system");
         return {
@@ -120,7 +150,11 @@ test.each([
     }))) };
     const program = createDoctorProgram({ plugin, commands: "s3", optionDefaults: { yes: true, config: "" } });
     await program.parseAsync(["s3", "inspect", ...(variant === "override" ? ["s3://requested"] : [])], { from: "user" });
-    expect(methods).toEqual(canInspect ? ["HEAD", "GET", "PUT"] : []);
+    expect(methods).toEqual(variant === "interrupt" ? ["HEAD", "GET", "PUT", "DELETE"] : canInspect ? ["HEAD", "GET", "PUT"] : []);
+    if (variant === "prepare-interrupt") {
+      expect(process.exitCode).toBe(130);
+      return;
+    }
     const archive = join(root, "s3-inspect.tar.gz");
     const files = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" }).trim().split("\n");
     const read = (file: string) => execFileSync("tar", ["-xOzf", archive, file], { encoding: "utf8" });
@@ -128,7 +162,12 @@ test.each([
     expect(summary).not.toContain("test-secret");
     expect(summary).not.toContain("other-secret");
     const diagnosis = JSON.parse(read(files.find(f => f.endsWith("diagnosis.json"))!));
-    if (canInspect) {
+    if (variant === "interrupt") {
+      expect(process.exitCode).toBe(130);
+      expect(diagnosis.status).toBe("cancelled");
+      const result = JSON.parse(read(files.find(f => f.endsWith("/" + diagnosis.resultFile))!));
+      expect(result.inspection.chunk.samples).toMatchObject([{ cleanup: "deleted", versionId: "fixture-v1" }]);
+    } else if (canInspect) {
       expect(summary).toContain("未测出");
       expect(summary).toContain("AccessDenied");
       expect(diagnosis).toMatchObject({ status: "partial", target: { namespace: "vke-system", service: "svc", configuredBucket: "archive" },
@@ -140,11 +179,30 @@ test.each([
       expect(diagnosis.reason).toContain("/ second /");
     }
   } finally {
-    process.chdir(previous); process.exitCode = exitCode;
-    kube.mockRestore(); forward?.mockRestore();
+    process.chdir(previous); process.exitCode = exitCode ?? 0;
+    kube.mockRestore(); forward?.mockRestore(); stop?.mockRestore();
     await fixture.close(); rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("a stalled DELETE expires under the cleanup budget and retains the unresolved key", async () => {
+  const run = new AbortController();
+  let attempted: string | undefined;
+  const result = await probeChunkLimit({ request: async () => {
+    run.abort();
+    return { status: 200, headers: { "x-amz-version-id": "v1" }, body: Buffer.alloc(0) };
+  } }, {
+    headObject: async () => { throw run.signal.reason; },
+    deleteObject: async (_bucket, key, options) => {
+      attempted = key;
+      const signal = options!.signal!;
+      signal.throwIfAborted();
+      await new Promise<void>((_, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+    },
+  }, "bucket", run.signal);
+  expect(result.samples).toHaveLength(1);
+  expect(result.samples[0]).toMatchObject({ key: attempted, versionId: "v1", cleanup: expect.stringContaining("unconfirmed") });
+}, 8000);
 
 test("non-default chunk ceiling, byte budget and cleanup errors preserve only measured bounds", async () => {
   let size = 0, limit = 8 * 1024 ** 2;

@@ -4,6 +4,7 @@ import { S3_PROVIDER as BUILT_IN_PROVIDER } from "./minio/provider";
 
 export interface S3ProviderConnection {
   http: HttpApi;
+  signal?: AbortSignal;
   credentials?: {
     accessKey: string;
     secretKey: string;

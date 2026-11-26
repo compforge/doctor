@@ -5,7 +5,7 @@ import {
   CommandContext, CommandInputError, CommandStatus, defineCommand,
   type CommandInput, type CommandResult,
 } from "../src/command";
-import { onCommandDispose } from "../src/command/execution-scope";
+import { currentCommandSignal, onCommandDispose } from "../src/command/execution-scope";
 import { commandExitCode } from "../src/app/command";
 
 const ok = <T>(output: T): CommandResult<T> => ({ status: CommandStatus.Ok, output, artifacts: [] });
@@ -89,6 +89,7 @@ test("prepare failure preserves evidence, releases resources and leaves sibling 
 
 test("declined or interrupted preparation skips execution and closes acquired resources", async () => {
   for (const interrupted of [false, true]) {
+    const closeClient = mock(() => {});
     const dispose = mock(() => { });
     const run = mock(async () => ok(1));
     const context = new CommandContext({});
@@ -96,17 +97,44 @@ test("declined or interrupted preparation skips execution and closes acquired re
       name: "cancel", prepare: async ctx => {
         onCommandDispose(dispose);
         ctx.artifacts.add({ command: "cancel", path: "/tmp/cancel-prepare-evidence" });
-        if (interrupted) { ctx.cancel(); return "ready"; }
+        if (interrupted) {
+          ctx.interrupt(new Error("stop during prepare"));
+          ctx.signal.throwIfAborted();
+          currentCommandSignal()!.throwIfAborted();
+          await prepareCommandRequirements(ctx, {});
+          await ctx.clients.get({ clientKey: "prepared", createClient: (_clients, signal) => ({
+            initialize: async () => signal.throwIfAborted(), dispose: async () => closeClient(),
+          }) });
+          return "ready";
+        }
         return undefined;
       }, run,
     });
     const result = await command.run(context, {});
     expect(result.status).toBe(CommandStatus.Cancelled);
     expect(result.artifacts).toHaveLength(1);
+    expect(result).not.toHaveProperty("error");
     expect(context.signal.aborted).toBe(true);
+    expect(closeClient).not.toHaveBeenCalled();
+    await context.disposeClients();
+    expect(closeClient).toHaveBeenCalledTimes(interrupted ? 1 : 0);
     expect(run).not.toHaveBeenCalled();
     expect(dispose).toHaveBeenCalledTimes(1);
   }
+});
+
+test("an already requested interrupt allows preparation and cleanup while skipping run", async () => {
+  const context = new CommandContext({}, undefined, { signal: AbortSignal.abort() });
+  const prepare = mock(async (ctx: CommandContext) => { ctx.signal.throwIfAborted(); return {}; });
+  const run = mock(async () => ok(1));
+  const command = defineCommand({ name: "already-interrupted", prepare, run });
+  try {
+    const result = await command.run(context, {});
+    expect(result.status).toBe(CommandStatus.Cancelled);
+    expect(result).not.toHaveProperty("error");
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(run).not.toHaveBeenCalled();
+  } finally { await context.disposeClients(); }
 });
 
 test("concurrent idempotent calls share preparation, execution and cleanup", async () => {

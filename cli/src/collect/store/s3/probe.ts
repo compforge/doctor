@@ -63,7 +63,7 @@ const BUCKET_ACCESS_PROBE: S3Probe = {
       let discovery: "list-buckets" | "configured-bucket-fallback" = "list-buckets";
       let discoveryReason: string | undefined;
       try {
-        const page = await ctx.client!.listBuckets({ maxBuckets: 10_000 });
+        const page = await ctx.client!.listBuckets({ maxBuckets: 10_000, signal: ctx.command.signal });
         // Do not claim complete account discovery when the bounded response is truncated.
         if (page.continuationToken) throw new Error("ListBuckets 超过单次发现预算，仅检查 Service 配置的 Bucket");
         buckets = page.buckets.map(bucket => bucket.name);
@@ -71,7 +71,7 @@ const BUCKET_ACCESS_PROBE: S3Probe = {
         ctx.command.signal.throwIfAborted();
         discovery = "configured-bucket-fallback";
         discoveryReason = errorReason(error);
-        await ctx.client!.headBucket(ctx.serviceBucket!);
+        await ctx.client!.headBucket(ctx.serviceBucket!, { signal: ctx.command.signal });
         buckets = [ctx.serviceBucket!];
       }
       if (!buckets.includes(ctx.serviceBucket!)) buckets.unshift(ctx.serviceBucket!);
@@ -135,14 +135,14 @@ const INVENTORY_PROBE: S3Probe = {
         let versioningReason: string | undefined;
         try {
           versioning = await ctx.client!.getBucketVersioning(bucket, {
-            signal: AbortSignal.timeout(Math.min(10_000, timeBudget)),
+            signal: AbortSignal.any([ctx.command.signal, AbortSignal.timeout(Math.min(10_000, timeBudget))]),
           });
         } catch (error) {
           ctx.command.signal.throwIfAborted();
           versioningReason = errorReason(error);
         }
         const inventory = await scanS3Objects({
-          client: ctx.client!,
+          client: ctx.client!, signal: ctx.command.signal,
           bucket,
           prefix: ctx.inventoryPrefix,
           priorityPrefix: serviceFocus ? ctx.servicePrefix : undefined,
@@ -188,7 +188,7 @@ const PROVIDER_HEALTH_PROBE: S3Probe = {
     const provider = facts.provider;
     if (provider.status !== "collected") return [];
     const health = await getS3ProviderHealth(provider.providerId, {
-      http: ctx.providerHttp!,
+      http: ctx.providerHttp!, signal: ctx.command.signal,
       credentials: { accessKey: ctx.target!.credentials.accessKeyId, secretKey: ctx.target!.credentials.secretAccessKey },
     });
     const observation = {
@@ -214,7 +214,7 @@ const BUCKET_USAGE_PROBE: S3Probe = {
       const provider = facts.provider;
       if (provider.status !== "collected") return [];
       const usage = await getS3ProviderBucketUsage(provider.providerId, {
-        http: ctx.providerHttp!,
+        http: ctx.providerHttp!, signal: ctx.command.signal,
         credentials: { accessKey: ctx.target!.credentials.accessKeyId, secretKey: ctx.target!.credentials.secretAccessKey },
       });
       ctx.bucketUsage = usage.buckets;
@@ -246,7 +246,7 @@ const DRIVE_CAPACITY_PROBE: S3Probe = {
       const provider = facts.provider;
       if (provider.status !== "collected") return [];
       const capacity = await getS3ProviderDriveCapacity(provider.providerId, {
-        http: ctx.providerHttp!,
+        http: ctx.providerHttp!, signal: ctx.command.signal,
         credentials: { accessKey: ctx.target!.credentials.accessKeyId, secretKey: ctx.target!.credentials.secretAccessKey },
       });
       const observation = {

@@ -74,7 +74,7 @@ export async function getMinioDriveCapacity(
       http: connection.http,
       path: "/minio/v2/metrics/resource",
       credentials: connection.credentials,
-      signal: controller.signal,
+      signal: connection.signal ? AbortSignal.any([connection.signal, controller.signal]) : controller.signal,
     });
     if (metrics.status < 200 || metrics.status >= 300) {
       throw new Error(`MinIO Drive Capacity Metrics 不可用：${metrics.endpoint}=HTTP ${metrics.status}`);
