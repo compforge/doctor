@@ -1,5 +1,5 @@
 import { expect, spyOn, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createDoctorProgram } from "../src/app/main";
@@ -7,8 +7,8 @@ import * as execution from "../src/app/command";
 import { CommandContext, CommandStatus } from "../src/command";
 import { overviewCommand, type OverviewOutput } from "../src/overview";
 import { buildOverviewHtml, writeOverviewEvidence } from "../src/overview/report";
-import { finalizeResult, readReport } from "./report-fixture";
-import { readBundleIndex, readBundleText } from "./bundle-fixture";
+import { captureSerializedDirectory, finalizeResult, readReport } from "./report-fixture";
+import type { Manifest } from "../src/command/manifest";
 
 test("overview is the sole CLI name and preserves lookup and explicit collection flags", async () => {
   const run = spyOn(execution, "runCommand").mockResolvedValue(undefined);
@@ -34,13 +34,14 @@ test("overview is the sole CLI name and preserves lookup and explicit collection
   } finally { run.mockRestore(); }
 });
 
-test("overview owns report titles, artifact identity and bundle manifest", async () => {
+test("overview owns report titles, artifact identity and serialized manifest", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-overview-test-"));
   const context = new CommandContext({});
   const output: OverviewOutput = {
     query: { window: { from: "2026-10-09T00:00:00Z", to: "2026-10-09T01:00:00Z" }, maxEntries: 100 },
     providers: [], samples: [], sampleAllocations: [], collection: "not-requested",
   };
+  const captured = captureSerializedDirectory();
   let evidence: string | undefined;
   try {
     evidence = writeOverviewEvidence(output, context);
@@ -48,14 +49,20 @@ test("overview owns report titles, artifact identity and bundle manifest", async
     expect(buildOverviewHtml(output)).toContain("<title>Doctor Overview</title>");
     const result = { status: CommandStatus.Ok, output, artifacts: context.artifacts.list() };
     expect(overviewCommand.reportName?.({}, result, new Date())).toStartWith("doctor-overview-");
-    const archive = join(root, "overview.tar.gz");
-    expect(await finalizeResult(context, overviewCommand, result, { format: "bundle", output: archive }, {})).toBe(0);
-    const manifest = readBundleIndex(archive, "overview");
+    const outputPath = join(root, "overview.html");
+    expect(await finalizeResult(context, overviewCommand, result, { format: "html", output: outputPath }, {})).toBe(0);
+    const directory = captured.directory!;
+    const manifest: Manifest = JSON.parse(readFileSync(join(directory, "manifest.json"), "utf8"));
+    expect(manifest.schemaVersion).toBe(2);
     expect(manifest.source.command).toBe("overview");
-    const html = readBundleText(archive, `overview/${manifest.files.report!.path}`);
+    const html = readFileSync(join(directory, manifest.files.report!.path), "utf8");
+    expect(readFileSync(outputPath, "utf8")).toBe(html);
     expect(html).toContain("doctor overview");
     expect(readReport(html).pages).toContain("<title>Doctor Overview</title>");
   } finally {
+    const directory = captured.directory;
+    captured.restore();
+    if (directory) rmSync(directory, { recursive: true, force: true });
     await context.disposeClients();
     if (evidence) rmSync(evidence, { recursive: true, force: true });
     rmSync(root, { recursive: true, force: true });
