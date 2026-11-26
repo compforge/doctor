@@ -39,8 +39,12 @@ export function readServiceEvidence(directory: string, path: string, kind: Colle
     const file = manifest.files[key];
     if (file) rows.push({ service, kind, file: join(base, file.path), scope, detail, gap });
   }
+  // raw_file is an artifact-relative path; the manifest may index it under a semantic key such as "facts".
+  const keysByPath = new Map(Object.entries(manifest.files).map(([key, file]) => [file.path, key]));
   for (const step of collection?.steps ?? []) {
-    if (step.service) add(step.service, step.raw_file && Object.hasOwn(manifest.files, step.raw_file) ? step.raw_file : "collection",
+    if (!step.service) continue;
+    const rawKey = step.raw_file ? keysByPath.get(step.raw_file) : undefined;
+    add(step.service, rawKey ?? "collection",
       [step.title, step.status, step.reason, step.truncation?.reason].filter(Boolean).join(" · "),
       Boolean(step.truncation) || !["ok", "unnecessary"].includes(step.status));
   }

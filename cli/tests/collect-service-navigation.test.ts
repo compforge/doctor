@@ -30,7 +30,10 @@ test("delivered Service pages address source records, gaps, shared traces and pi
     mkdirSync(path);
     const save = (name: string, data: unknown) => writeFileSync(join(path, name), JSON.stringify(data));
     if (kind === "data") {
-      save("collection.json", { files: { facts: "facts.json" } });
+      save("collection.json", { files: { facts: "facts.json" }, steps: [
+        { service: "api", title: "Lookup attempt", status: "ok", raw_file: "facts.json" },
+        { service: "api", title: "Prepare lookup", status: "ok" },
+      ] });
       save("facts.json", { capabilityResults: [
         { service: "api", status: "collected", id: "query-a", identity: { kind: "request", value: "request-a" },
           result: { facts: [{ factType: "record", kind: "attempt", recordKey: "attempt-A" }] } },
@@ -66,6 +69,8 @@ test("delivered Service pages address source records, gaps, shared traces and pi
     expect(summary).not.toContain("services/undeclared");
     expect(index.files["services/worker/summary.md"]).toBeDefined();
     const worker = read("services/worker/summary.md"), api = read("services/api/summary.md");
+    expect(api).toMatch(/Lookup attempt · ok · \[原文\]\(<[^>\n]+\/raw\/facts\.json>\)/);
+    expect(api).toMatch(/Prepare lookup · ok · \[原文\]\(<[^>\n]+\/collection\.json>\)/);
     expect(api).toContain("capabilityResults.0.result.facts.0");
     expect(api).toContain("attempt-A");
     expect(api.split("\n").filter(line => line.includes("下游（calls）"))).toEqual(["- 下游（calls）：[worker](<../worker/summary.md>)"]);
