@@ -115,8 +115,8 @@ Inspect 和 Tenant 的 Input 构造函数按检查范围、租户及采集参数
 | `CommandInputError` | 参数或输入组合无效 | 诊断码为 `invalid_argument`。作为根命令失败交付时，CLI 退出码为 `2`。 |
 | `CommandAbortError` | 当前目标已确定无法继续执行整轮命令 | 子命令逐层向上抛出，最外层 `Command.run` 收敛为 `failed`，停止后续步骤。CLI 输出一次错误提示，退出码为 `1`。 |
 
-领域代码捕获并降级错误时，须透传收到的 `CommandAbortError`。例如，`collect` 确认交互选中的
-namespace 匹配到零个插件 Service 时，抛出诊断码为 `namespace_no_matching_services` 的
+领域代码捕获并降级错误时，须透传收到的 `CommandAbortError`。对于声明了 Service 的 Plugin，
+`collect` 确认交互选中的 namespace 匹配数为零时，抛出诊断码为 `namespace_no_matching_services` 的
 `CommandAbortError`，提示指定业务 Service 所在的 namespace 后重试。
 
 最外层 Command 进入 Finalize，清理资源并交付已保留的产物；执行诊断写入 `diagnostics.json`，

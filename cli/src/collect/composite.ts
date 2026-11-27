@@ -326,7 +326,7 @@ export function createCollectCommand(delegate?: CollectDelegate) {
         const target = await resolveKubernetesCommandConfig(input, undefined, context);
         if (!target) return undefined;
         const count = target.namespaceServiceCounts?.find(item => item.name === context.plugin.id);
-        if (count?.matched === 0) {
+        if (count?.matched === 0 && count.total > 0) {
           throw new CommandAbortError(
             `Namespace '${target.kubernetes.namespace}' 中未匹配到 ${count.name} Service（0/${count.total}）。请指定业务 Service 所在的 Kubernetes namespace 后重试。`,
             { code: "namespace_no_matching_services" },
