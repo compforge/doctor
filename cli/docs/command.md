@@ -91,10 +91,6 @@ validate domain input
 组合命令逐个调用已选择的子命令；一个子命令不可用时，其它独立子命令仍可执行。子命令的必要条件
 不能简单合并成父命令的全局门槛，否则缺少一种证据能力就会阻断整个概览或采集。
 
-若本次调用的目标无法继续执行，Command 可以抛出 `CommandAbortError`（`DoctorError` 的子类），
-随错误携带具体的诊断 `code`。子命令向上透传该异常，最外层 `Command.run` 将它转换为
-`failed`，输出诊断并进入正常收尾。领域代码捕获并降级错误时，应透传收到的 `CommandAbortError`。
-
 Input 可以提供 `idempotencyKey(): string`，显式声明本次逻辑执行的身份。`defineCommand` 在输入校验后，
 按 Command 定义身份和 key 在当前 CommandContext 中合并调用：正在执行时等待同一个 Promise，包括资源
 清理；已完成时返回原状态、Output 和 Artifacts，不产生 skipped 状态。未提供方法时每次独立
@@ -104,6 +100,26 @@ Input 可以提供 `idempotencyKey(): string`，显式声明本次逻辑执行�
 Inspect 和 Tenant 的 Input 构造函数按检查范围、租户及采集参数生成 key，Collect 使用这些 Input 调用
 子命令。调用方仍显式纳入子产物，Artifacts 按产物 ID 去重，因此多个 Collect 可引用同一份环境/租户证据，
 最终报告只交付一份。Overview 无需识别第一次或后续 Collect。
+
+## DoctorError
+
+`DoctorError` 是 Core 和 Plugin 共用的错误基类，承载面向读者的 `message`、可选的稳定诊断码
+`code` 和原始 `cause`。子类表达 Command 的处理语义，`code` 标识具体失败原因。
+[基类定义](../../packages/plugin/src/errors.ts) · [Command 错误类型](../src/command/result.ts)
+
+| 错误类型 | 使用场景 | Command 行为 |
+|---|---|---|
+| `DoctorError` | 当前操作失败，可附带诊断码和底层原因 | 未在当前步骤处理的错误会形成该次调用的 `failed`。聚合命令可以继续执行独立步骤。 |
+| `CommandInputError` | 参数或输入组合无效 | 诊断码为 `invalid_argument`。作为根命令失败交付时，CLI 退出码为 `2`。 |
+| `CommandAbortError` | 当前目标已确定无法继续执行整轮命令 | 子命令逐层向上抛出，最外层 `Command.run` 收敛为 `failed`，停止后续步骤。CLI 输出一次错误提示，退出码为 `1`。 |
+
+领域代码捕获并降级错误时，须透传收到的 `CommandAbortError`。例如，`collect` 确认交互选中的
+namespace 匹配到零个插件 Service 时，抛出诊断码为 `namespace_no_matching_services` 的
+`CommandAbortError`，提示指定业务 Service 所在的 namespace 后重试。
+
+最外层 Command 进入 Finalize，清理资源并交付已保留的产物；执行诊断写入 `diagnostics.json`，
+其中包含脱敏后的消息、诊断码及原因链。根命令的普通失败退出码为 `1`。用户取消以 `cancelled`
+交付，退出码为 `130`。 [执行诊断](../src/command/diagnostic.ts) · [退出码映射](../src/app/command.ts)
 
 ## Context 与调用归属
 
@@ -333,7 +349,7 @@ manifest 的 `--output` 必须是尚不存在的目录，未指定则保留唯�
 
 - `execution` 表示命令采集终态，partial 保持 partial；业务状态从领域证据读取。
 - `serialization` 表示本地文件写入；`render` 表示页面生成；`delivery` 表示交付。
-- `delivery.exitCode` 是最终 CLI 退出码：ok/partial 通常为 0，失败非零，取消为 130。
+- `delivery.exitCode` 是最终 CLI 退出码。ok/partial 通常为 0，失败和取消的映射见 [DoctorError](#doctorerror)。
 - `delivery.location.directory/manifest` 显式记录原交付现场的绝对路径，内部引用始终相对。
 - `source` 记录命令、已知 Profile/Plugin 与实际 Kubernetes 目标，不写入凭据或配置正文。
 
