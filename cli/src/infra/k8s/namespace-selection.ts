@@ -121,11 +121,10 @@ export type NamespaceAnswerResolution =
 export function resolveNamespaceAnswer(
   choices: readonly NamespaceChoice[],
   answer: string,
-  defaultNamespace: string,
   numberedChoices: readonly NamespaceChoice[] = [],
 ): NamespaceAnswerResolution {
   const normalized = answer.trim();
-  if (!normalized) return { kind: "selected", namespace: defaultNamespace };
+  if (!normalized) return { kind: "not-found" };
   if (choices.length === 0 && /^\d+$/.test(normalized)) return { kind: "invalid-number" };
   if (choices.length === 0) return { kind: "selected", namespace: normalized };
   const resolution = resolveSearchableChoice(
@@ -143,29 +142,26 @@ export function resolveNamespaceAnswer(
 export async function promptNamespace(
   input: {
     choices: readonly NamespaceChoice[];
-    defaultNamespace: string;
     selection: SelectionContext;
   },
 ): Promise<string | undefined> {
+  const label = "k8s Namespace";
+  const instruction = selectionInstruction(input.selection, label, "请选择");
   if (input.selection.effect) useLogger("collect").info(`${input.selection.effect}`);
   if (input.choices.length > 0) {
-    printNamespaceChoices(input.choices, selectionTitle(input.selection, "Namespace"));
+    printNamespaceChoices(input.choices, selectionTitle(input.selection, label));
   }
   return promptSearchableChoice({
     choices: input.choices,
     choicesAreListed: input.choices.length > 0,
-    question: () => `${selectionInstruction(input.selection, "Namespace", "请选择")}（序号、名称或关键词，回车使用 ${input.defaultNamespace}，q 取消）：`,
+    question: () => `${instruction}（序号、名称或关键词，q 取消）：`,
     resolve: (answer, numberedChoices) => {
-      const resolution = resolveNamespaceAnswer(
-        input.choices,
-        answer,
-        input.defaultNamespace,
-        numberedChoices,
-      );
+      const resolution = resolveNamespaceAnswer(input.choices, answer, numberedChoices);
       return resolution.kind === "selected"
         ? { kind: "selected", value: resolution.namespace }
         : resolution;
     },
+    emptyMessage: `${instruction}。`,
     printChoices: printNamespaceChoices,
     ambiguousTitle: (answer) => `[collect] 关键词 '${answer}' 匹配到多个 Namespace：`,
     notFoundMessage: (answer) => `[collect] 未找到匹配 '${answer}' 的 Namespace，请重新输入。`,
@@ -225,7 +221,6 @@ export async function resolvePodNamespace(
       + "（Namespace 候选发现）；改为手动输入");
     const selected = await (input.prompt ?? promptNamespace)({
       choices: [],
-      defaultNamespace: input.resolved.namespace,
       selection,
     });
     return selected ? { namespace: selected, source: "prompt" } : undefined;
@@ -269,7 +264,6 @@ export async function resolvePodNamespace(
 
   const selected = await (input.prompt ?? promptNamespace)({
     choices,
-    defaultNamespace: input.resolved.namespace,
     selection,
   });
   return selected ? { namespace: selected, source: "prompt" } : undefined;

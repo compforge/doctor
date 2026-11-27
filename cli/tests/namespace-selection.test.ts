@@ -84,24 +84,22 @@ describe("Namespace 选择", () => {
       .toBe("default  Active  agentsphere 0/2 Services · platform 1/1 Services");
   });
 
-  test("回车使用默认 namespace，序号只对已展示候选生效", () => {
+  test("交互需明确选择 Namespace，序号只对已展示候选生效", () => {
     const choices = parseNamespaceChoices(NAMESPACES);
-    expect(resolveNamespaceAnswer(choices, "", "default")).toEqual({
+    expect(resolveNamespaceAnswer(choices, "")).toEqual({ kind: "not-found" });
+    expect(resolveNamespaceAnswer([], " ")).toEqual({ kind: "not-found" });
+    expect(resolveNamespaceAnswer(choices, "2", choices)).toEqual({
       kind: "selected",
       namespace: "default",
     });
-    expect(resolveNamespaceAnswer(choices, "2", "default", choices)).toEqual({
-      kind: "selected",
-      namespace: "default",
-    });
-    expect(resolveNamespaceAnswer(choices, "4", "default", choices)).toEqual({
+    expect(resolveNamespaceAnswer(choices, "4", choices)).toEqual({
       kind: "invalid-number",
     });
-    expect(resolveNamespaceAnswer([], "customer-system", "default")).toEqual({
+    expect(resolveNamespaceAnswer([], "customer-system")).toEqual({
       kind: "selected",
       namespace: "customer-system",
     });
-    expect(resolveNamespaceAnswer([], "2", "default")).toEqual({ kind: "invalid-number" });
+    expect(resolveNamespaceAnswer([], "2")).toEqual({ kind: "invalid-number" });
   });
 
   test("显式 flag/profile 与非交互场景不查 Namespace 列表", async () => {
@@ -125,9 +123,8 @@ describe("Namespace 选择", () => {
       resolved: { namespace: "default", source: "default" },
       executor,
       interactive: true,
-      prompt: async ({ choices, defaultNamespace, selection }) => {
+      prompt: async ({ choices, selection }) => {
         expect(choices.map((choice) => choice.name)).toEqual(["app-system", "default", "z-terminating"]);
-        expect(defaultNamespace).toBe("default");
         expect(selection.purpose).toBe("定位本次操作涉及的 Service");
         return "app-system";
       },
