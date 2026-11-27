@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { commandExitCode, runCommand } from "../src/app/command";
 import { createCollectCommand } from "../src/collect/composite";
 import {
-  CommandContext, CommandInputError, CommandStatus, commandOutcome, defineCommand,
+  CommandAbortError, CommandContext, CommandInputError, CommandStatus, SerializeContext, commandOutcome, defineCommand,
   type CommandInput, type CommandResult, type EnvironmentRequirements,
 } from "../src/command";
 import { onCommandDispose } from "../src/command/execution-scope";
@@ -108,6 +108,51 @@ test("missing child capability does not veto independent collectors", async () =
   expect(calls).toEqual(["trace", "data"]);
   expect(work).not.toHaveBeenCalled();
   for (const artifact of result.artifacts) rmSync(artifact.path, { force: true, recursive: true });
+});
+
+test("explicit child abort stops its command tree, preserving diagnostics and captured evidence", async () => {
+  const errors = mock((_error: unknown, _command: string) => {});
+  const context = new CommandContext({}, undefined, { plugin, onError: errors });
+  const abort = new CommandAbortError("wrong target", { code: "wrong_target" });
+  const root = mkdtempSync(join(tmpdir(), "doctor-command-abort-"));
+  const path = join(root, "evidence.txt");
+  writeFileSync(path, "captured");
+  const child = defineCommand<CommandInput, void>({
+    name: "trace",
+    prepare: async (_context, input) => input,
+    run: async () => {
+      context.artifacts.add({ command: "trace", path });
+      onCommandDispose(() => { throw new Error("cannot close"); });
+      throw abort;
+    },
+  });
+  const calls: string[] = [];
+  const collect = createCollectCommand(async (kind) => {
+    calls.push(kind);
+    return kind === "trace" ? child.run(context, {}) : ok(undefined);
+  });
+
+  try {
+    const result = await collect.run(context, { bizIds: ["id"], kinds: ["data", "trace", "log"] });
+    expect(result).toMatchObject({
+      status: CommandStatus.Failed, error: abort, reason: "wrong target", artifacts: [{ command: "trace", path }],
+      diagnostics: [{ phase: "cleanup", message: "cannot close" }, { phase: "run", code: "wrong_target" }],
+    });
+    expect(commandExitCode(result)).toBe(1);
+    expect(calls).toEqual(["data", "trace"]);
+    expect(errors.mock.calls).toEqual([[abort, "doctor collect"]]);
+    expect(context.signal.aborted).toBe(false);
+
+    const output = join(root, "output");
+    const serialized = await SerializeContext.create(output, collect, result);
+    expect(serialized.failed).toBe(false);
+    const manifest = JSON.parse(readFileSync(join(output, "manifest.json"), "utf8"));
+    const childManifest = manifest.children[0].manifest;
+    expect(readFileSync(join(output, childManifest, "..", "evidence.txt"), "utf8")).toBe("captured");
+    expect(JSON.parse(readFileSync(join(output, "diagnostics.json"), "utf8"))).toEqual(result.diagnostics);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("parallel and repeated child calls return only their own artifacts and output", async () => {

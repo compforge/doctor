@@ -2,6 +2,8 @@ import { writeServiceNavigation } from "./service-navigation";
 import { summaryText } from "../command/summary";
 import { freezeTimeWindow, resolveTimeWindow } from "./time-window";
 import { prepareCommandRequirements } from "../command/prepare";
+import { resolveKubernetesCommandConfig } from "../command/kubernetes-target";
+import { resolveCollectNamespace } from "../infra/k8s/context";
 import type { ResultRef } from "../command/manifest";
 import type { CommandSpec } from "../command/spec";
 import { isInteractive } from "../terminal/policy";
@@ -12,6 +14,7 @@ import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../app/version";
 import {
   aggregateCommandStatus,
+  CommandAbortError,
   CommandInputError,
   CommandStatus,
   defineCommand,
@@ -31,6 +34,7 @@ import { dataLogWindows, type DataLogWindows } from "./log/data-window";
 import { logCommand } from "./log/command";
 import { createTenantInput, tenantCommand } from "./tenant/command";
 import { traceCommand } from "./trace/command";
+import { serializeEvidence } from "./serialize";
 
 export const COLLECT_KINDS = ["inspect", "tenant", "data", "trace", "log"] as const;
 export type CollectKind = typeof COLLECT_KINDS[number];
@@ -252,6 +256,12 @@ export function createCollectCommand(delegate?: CollectDelegate) {
       };
       const children: ResultRef[] = [];
       for (const step of result.output?.steps ?? []) children.push(await context.serialize(commands[step.kind], step.result));
+      if (!result.output && result.artifacts.length && "error" in result && result.error instanceof CommandAbortError) {
+        children.push(await context.serialize({
+          name: "Collected evidence",
+          serialize: async (writer, captured) => serializeEvidence(writer, captured.artifacts),
+        }, { status: CommandStatus.Partial, artifacts: result.artifacts, output: undefined }));
+      }
       const source = result.artifacts.find(artifact => artifact.command === "collect");
       const staged = source ? JSON.parse(readFileSync(source.path, "utf8")) : {};
       const steps = (result.output?.steps ?? []).map((step, index) => ({
@@ -305,7 +315,24 @@ export function createCollectCommand(delegate?: CollectDelegate) {
       if (context.options.format?.trim() === "summary" && context.options.output) {
         throw new CommandInputError("--format summary 直接输出到终端，不支持 --output");
       }
-      await prepareCommandRequirements(context, { plugin: { command: "doctor collect", needs: [] } });
+      const selectNamespace = input.kinds.length > 0 && isInteractive()
+        && resolveCollectNamespace(input, context.profile).source === "default";
+      await prepareCommandRequirements(context, {
+        plugin: { command: "doctor collect", needs: [] },
+        environment: selectNamespace ? { kubernetes: true } : undefined,
+      });
+      // Child commands reuse this decision with the same resolved context and profile.
+      if (selectNamespace) {
+        const target = await resolveKubernetesCommandConfig(input, undefined, context);
+        if (!target) return undefined;
+        const count = target.namespaceServiceCounts?.find(item => item.name === context.plugin.id);
+        if (count?.matched === 0) {
+          throw new CommandAbortError(
+            `Namespace '${target.kubernetes.namespace}' 中未匹配到 ${count.name} Service（0/${count.total}）。请指定业务 Service 所在的 Kubernetes namespace 后重试。`,
+            { code: "namespace_no_matching_services" },
+          );
+        }
+      }
       return input;
     },
     run: async (context, input) => {

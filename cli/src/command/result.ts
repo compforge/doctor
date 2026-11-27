@@ -23,6 +23,9 @@ export type CommandResult<Output> = CommandResultArtifacts & (
     }
 );
 
+/** @spec Abort the current command tree and retain the error as the root failure. */
+export class CommandAbortError extends DoctorError {}
+
 export class CommandInputError extends DoctorError {
   constructor(message?: string, options?: ErrorOptions) {
     super(message, { ...options, code: "invalid_argument" });

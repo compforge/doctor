@@ -91,6 +91,10 @@ validate domain input
 组合命令逐个调用已选择的子命令；一个子命令不可用时，其它独立子命令仍可执行。子命令的必要条件
 不能简单合并成父命令的全局门槛，否则缺少一种证据能力就会阻断整个概览或采集。
 
+若本次调用的目标无法继续执行，Command 可以抛出 `CommandAbortError`（`DoctorError` 的子类），
+随错误携带具体的诊断 `code`。子命令向上透传该异常，最外层 `Command.run` 将它转换为
+`failed`，输出诊断并进入正常收尾。领域代码捕获并降级错误时，应透传收到的 `CommandAbortError`。
+
 Input 可以提供 `idempotencyKey(): string`，显式声明本次逻辑执行的身份。`defineCommand` 在输入校验后，
 按 Command 定义身份和 key 在当前 CommandContext 中合并调用：正在执行时等待同一个 Promise，包括资源
 清理；已完成时返回原状态、Output 和 Artifacts，不产生 skipped 状态。未提供方法时每次独立

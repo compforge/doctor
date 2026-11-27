@@ -167,7 +167,12 @@ describe("Namespace 选择", () => {
       },
     });
 
-    expect(selected).toEqual({ namespace: "app-system", source: "prompt" });
+    expect(selected).toEqual({
+      namespace: "app-system", source: "prompt", serviceCounts: [
+        { name: "agentsphere", matched: 2, total: 2 },
+        { name: "platform", matched: 0, total: 1 },
+      ],
+    });
     expect(executor.calls).toEqual([
       ["get", "namespaces", "-o", "json"],
       ["get", "services", "--all-namespaces", "-o", "json"],

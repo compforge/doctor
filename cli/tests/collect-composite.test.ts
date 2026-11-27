@@ -9,6 +9,8 @@ import { dirname, join } from "node:path";
 import { commandExitCode } from "../src/app/command";
 import { finalizeFixture } from "./report-fixture";
 import { collectPluginCapabilities } from "../src/app/plugin-command-capabilities";
+import * as kubernetesTarget from "../src/command/kubernetes-target";
+import * as terminalPolicy from "../src/terminal/policy";
 import {
   COLLECT_KINDS,
   collectReportName,
@@ -84,6 +86,43 @@ test("collect delegates concrete work and continues after one command fails", as
     ["log", 0],
   ]);
   expect((results[2]?.result as { reason?: string }).reason).toBe("trace unavailable");
+});
+
+test.each([
+  [0, CommandStatus.Failed], [1, CommandStatus.Ok], [undefined, CommandStatus.Ok],
+] as const)("collect handles selected namespace with %s matched Services before collecting", async (matched, status) => {
+  const interactive = spyOn(terminalPolicy, "isInteractive").mockReturnValue(true);
+  const selection = spyOn(kubernetesTarget, "resolveKubernetesCommandConfig").mockResolvedValue({
+    profileName: "default",
+    kubernetes: { namespace: "customer", namespaceSource: "prompt", kubeconfigSource: "kubectl-default" },
+    namespaceServiceCounts: matched === undefined ? undefined : [{ name: "test", matched, total: 2 }],
+  });
+  const calls: CollectKind[] = [];
+  const plugin = { id: "test", version: "1.0.0", services: createServiceCatalog([]) };
+  const context = new CommandContext({}, undefined, { plugin });
+  const environment = spyOn(context, "ensureEnvironment").mockResolvedValue(undefined);
+  const collect = createCollectCommand(async kind => {
+    calls.push(kind);
+    return commandOutcome(0);
+  });
+  try {
+    const result = await collect.run(context, { bizIds: [], kinds: ["inspect"] });
+    expect(environment).toHaveBeenCalledWith({ kubernetes: true });
+    expect(selection).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe(status);
+    expect(calls).toEqual(matched === 0 ? [] : ["inspect"]);
+    if (matched === 0) {
+      expect(commandExitCode(result)).toBe(1);
+      expect(result.diagnostics).toMatchObject([{
+        phase: "prepare", code: "namespace_no_matching_services",
+        message: expect.stringContaining("customer"),
+      }]);
+    }
+    for (const artifact of result.artifacts) rmSync(dirname(artifact.path), { recursive: true, force: true });
+  } finally {
+    selection.mockRestore();
+    interactive.mockRestore();
+  }
 });
 
 test("collect manifest records partial coverage and failure reasons", () => {

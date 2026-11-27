@@ -9,7 +9,7 @@ import {
 import { resolveWorkingProfileName } from "../app/profile";
 import { KubectlExecutor, type Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { KubernetesAccessContext } from "../infra/k8s/access";
-import { resolvePodNamespace } from "../infra/k8s/namespace-selection";
+import { resolvePodNamespace, type NamespaceSelection } from "../infra/k8s/namespace-selection";
 import {
   matchPodChoices,
   parsePodChoices,
@@ -54,6 +54,7 @@ export interface KubernetesCommandInput {
 /** YAML/profile、CLI flag 与交互输入合并后的命令级 Kubernetes 配置。 */
 export interface KubernetesCommandConfig {
   profileName: string;
+  namespaceServiceCounts?: NamespaceSelection["serviceCounts"];
   kubernetes: {
     kubeconfig?: string;
     kubeconfigSource: string;
@@ -67,7 +68,7 @@ export interface KubernetesCommandConfig {
 export const kubernetesTargetRecord = defineExecutionRecord<KubernetesCommandConfig["kubernetes"]>("kubernetes.targets");
 
 /** Composite commands reuse one namespace decision; each collector still owns its domain Config. */
-const kubernetesNamespaceDecision = defineCommandDecision<ResolvedNamespace | undefined>(
+const kubernetesNamespaceDecision = defineCommandDecision<NamespaceSelection | undefined>(
   "kubernetes.namespace",
 );
 
@@ -91,7 +92,7 @@ export async function resolveKubernetesCommandConfig(
   const kubeContext = inspected?.context ?? input.context;
   const profileName = commandContext?.profile.name ?? resolveWorkingProfileName(input);
   const configuredNamespace = resolveCollectNamespace(input, commandContext?.profile);
-  const resolveNamespace = async (): Promise<ResolvedNamespace | undefined> => {
+  const resolveNamespace = async (): Promise<NamespaceSelection | undefined> => {
     const channelExecutor = executor ?? new KubectlExecutor({
       kubeconfig: kube.kubeconfig,
       context: kubeContext,
@@ -134,6 +135,7 @@ export async function resolveKubernetesCommandConfig(
   }
   const resolved: KubernetesCommandConfig = {
     profileName,
+    ...(namespace.serviceCounts && { namespaceServiceCounts: namespace.serviceCounts }),
     kubernetes: {
       kubeconfig: kube.kubeconfig,
       kubeconfigSource: kube.source,

@@ -169,6 +169,10 @@ export async function promptNamespace(
   });
 }
 
+export type NamespaceSelection = ResolvedNamespace & {
+  serviceCounts?: readonly NamespacePluginServiceCount[];
+};
+
 export interface PodNamespaceSelection {
   resolved: ResolvedNamespace;
   kubeconfig?: string;
@@ -185,7 +189,7 @@ export interface PodNamespaceSelection {
 /** Pod 选择之前确定其 namespace 作用域；显式 flag/profile 不再重复询问。 */
 export async function resolvePodNamespace(
   input: PodNamespaceSelection,
-): Promise<ResolvedNamespace | undefined> {
+): Promise<NamespaceSelection | undefined> {
   const interactive = isInteractive(input.interactive);
   if (input.resolved.source !== "default" || !interactive) return input.resolved;
   const recent = recentSelectionsForInteractive(input.interactive, input.recent);
@@ -266,5 +270,7 @@ export async function resolvePodNamespace(
     choices,
     selection,
   });
-  return selected ? { namespace: selected, source: "prompt" } : undefined;
+  if (!selected) return undefined;
+  const serviceCounts = choices.find(choice => choice.name === selected)?.plugins;
+  return { namespace: selected, source: "prompt", ...(serviceCounts && { serviceCounts }) };
 }
