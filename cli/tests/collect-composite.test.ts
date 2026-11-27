@@ -89,13 +89,16 @@ test("collect delegates concrete work and continues after one command fails", as
 });
 
 test.each([
-  [0, CommandStatus.Failed], [1, CommandStatus.Ok], [undefined, CommandStatus.Ok],
-] as const)("collect handles selected namespace with %s matched Services before collecting", async (matched, status) => {
+  [0, 2, CommandStatus.Failed],
+  [1, 2, CommandStatus.Ok],
+  [0, 0, CommandStatus.Ok],
+  [undefined, 2, CommandStatus.Ok],
+] as const)("collect checks Service matches for the selected namespace", async (matched, total, status) => {
   const interactive = spyOn(terminalPolicy, "isInteractive").mockReturnValue(true);
   const selection = spyOn(kubernetesTarget, "resolveKubernetesCommandConfig").mockResolvedValue({
     profileName: "default",
     kubernetes: { namespace: "customer", namespaceSource: "prompt", kubeconfigSource: "kubectl-default" },
-    namespaceServiceCounts: matched === undefined ? undefined : [{ name: "test", matched, total: 2 }],
+    namespaceServiceCounts: matched === undefined ? undefined : [{ name: "test", matched, total }],
   });
   const calls: CollectKind[] = [];
   const plugin = { id: "test", version: "1.0.0", services: createServiceCatalog([]) };
@@ -110,8 +113,8 @@ test.each([
     expect(environment).toHaveBeenCalledWith({ kubernetes: true });
     expect(selection).toHaveBeenCalledTimes(1);
     expect(result.status).toBe(status);
-    expect(calls).toEqual(matched === 0 ? [] : ["inspect"]);
-    if (matched === 0) {
+    expect(calls).toEqual(status === CommandStatus.Failed ? [] : ["inspect"]);
+    if (status === CommandStatus.Failed) {
       expect(commandExitCode(result)).toBe(1);
       expect(result.diagnostics).toMatchObject([{
         phase: "prepare", code: "namespace_no_matching_services",
