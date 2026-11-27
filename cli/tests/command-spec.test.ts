@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { commandExitCode, runCommand } from "../src/app/command";
 import { createCollectCommand } from "../src/collect/composite";
 import {
-  CommandAbortError, CommandContext, CommandInputError, CommandStatus, SerializeContext, commandOutcome, defineCommand,
+  CommandAbortError, CommandContext, CommandError, CommandInputError, CommandStatus, SerializeContext, commandOutcome, defineCommand,
   type CommandInput, type CommandResult, type EnvironmentRequirements,
 } from "../src/command";
 import { onCommandDispose } from "../src/command/execution-scope";
@@ -54,10 +54,25 @@ test("validation precedes Plugin loading and environment preparation for direct 
     const result = await spec.run(context, { value: 1 });
     expect(result.status).toBe(CommandStatus.Failed);
     expect(commandExitCode(result)).toBe(2);
+    const error = "error" in result ? result.error : undefined;
+    expect(error).toBeInstanceOf(CommandError);
+    expect(error instanceof CommandError && error.command).toBe("child");
   }
   expect(load).not.toHaveBeenCalled();
   expect(work).not.toHaveBeenCalled();
   expect(environment.mock.calls.every(([requirements]) => !requirements.kubernetes)).toBe(true);
+});
+
+test("an error returned by Command.run records its command", async () => {
+  const command = defineCommand<CommandInput, void>({
+    name: "doctor trace",
+    prepare: async (_context, input) => input,
+    run: async () => commandOutcome(2),
+  });
+  const result = await command.run(makeContext(), {});
+  expect("error" in result && result.error).toBeInstanceOf(CommandError);
+  expect("error" in result && result.error instanceof CommandError && result.error.command).toBe("doctor trace");
+  expect(commandExitCode(result)).toBe(2);
 });
 
 test("Plugin loading and config validation are shared across sibling calls", async () => {
@@ -118,7 +133,7 @@ test("explicit child abort stops its command tree, preserving diagnostics and ca
   const path = join(root, "evidence.txt");
   writeFileSync(path, "captured");
   const child = defineCommand<CommandInput, void>({
-    name: "trace",
+    name: "doctor trace",
     prepare: async (_context, input) => input,
     run: async () => {
       context.artifacts.add({ command: "trace", path });
@@ -136,11 +151,16 @@ test("explicit child abort stops its command tree, preserving diagnostics and ca
     const result = await collect.run(context, { bizIds: ["id"], kinds: ["data", "trace", "log"] });
     expect(result).toMatchObject({
       status: CommandStatus.Failed, error: abort, reason: "wrong target", artifacts: [{ command: "trace", path }],
-      diagnostics: [{ phase: "cleanup", message: "cannot close" }, { phase: "run", code: "wrong_target" }],
+      diagnostics: [
+        { phase: "cleanup", message: "cannot close" },
+        { phase: "run", code: "wrong_target", command: "doctor trace", target: "doctor collect" },
+      ],
     });
     expect(commandExitCode(result)).toBe(1);
     expect(calls).toEqual(["data", "trace"]);
-    expect(errors.mock.calls).toEqual([[abort, "doctor collect"]]);
+    expect(abort).toBeInstanceOf(CommandError);
+    expect(abort.command).toBe("doctor trace");
+    expect(errors.mock.calls).toEqual([[abort, "doctor trace"]]);
     expect(context.signal.aborted).toBe(false);
 
     const output = join(root, "output");

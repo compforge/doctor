@@ -2,7 +2,7 @@ import { executionDiagnostic, diagnosticMessage, type ExecutionDiagnostic } from
 import { useLogger } from "../terminal/log";
 import type { CommandContext } from "./context";
 import { currentCommandClients, inCommandScope, recordExecutionDiagnostics, withRunSignal } from "./execution-scope";
-import { CommandAbortError, type CommandResult } from "./result";
+import { CommandAbortError, recordCommandError, type CommandResult } from "./result";
 import { CommandStatus } from "./status";
 import { withInteractionOptions } from "../terminal/policy";
 
@@ -73,11 +73,12 @@ export function defineCommand<Input extends CommandInput, Output, Prepared = Inp
               phase = "run";
               startedAt = Date.now();
               const result = await withRunSignal(context.runSignal, () => spec.run(context, prepared));
+              if ("error" in result) recordCommandError(result.error, spec.name);
               completed = context.runSignal.aborted ? { ...result, status: CommandStatus.Cancelled } : result;
               context.artifacts.add(result.artifacts);
               if (result.status === CommandStatus.Cancelled) context.cancel();
               return completed;
-            }, context.clients, { diagnostics });
+            }, context.clients, { command: spec.name, diagnostics });
           } catch (error) {
             if (nested && error instanceof CommandAbortError) {
               recordExecutionDiagnostics(diagnostics);
@@ -88,7 +89,7 @@ export function defineCommand<Input extends CommandInput, Output, Prepared = Inp
             if (!completed || !diagnostics.some(item => item.phase === "cleanup")) {
               diagnostics.push(executionDiagnostic(error, { phase: completed ? "cleanup" : phase, target: spec.name, startedAt, kind: cancelled ? "cancelled" : undefined }));
             }
-            if (!cancelled) context.options.onError?.(error, spec.name);
+            if (!cancelled) context.options.onError?.(error, recordCommandError(error, spec.name));
             return {
               ...completed,
               status: cancelled ? CommandStatus.Cancelled : CommandStatus.Failed,
@@ -112,8 +113,9 @@ export function defineCommand<Input extends CommandInput, Output, Prepared = Inp
         return cancelledBeforeLookup && result.status !== CommandStatus.Failed
           ? { ...result, status: CommandStatus.Cancelled } : result;
       } catch (error) {
+        const command = recordCommandError(error, spec.name);
         if (nested && error instanceof CommandAbortError) throw error;
-        context.options.onError?.(error, spec.name);
+        context.options.onError?.(error, command);
         if (error instanceof CommandAbortError) {
           return {
             status: CommandStatus.Failed, artifacts: [], error, reason: diagnosticMessage(error),

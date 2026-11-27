@@ -104,12 +104,14 @@ Inspect 和 Tenant 的 Input 构造函数按检查范围、租户及采集参数
 ## DoctorError
 
 `DoctorError` 是 Core 和 Plugin 共用的错误基类，承载面向读者的 `message`、可选的稳定诊断码
-`code` 和原始 `cause`。子类表达 Command 的处理语义，`code` 标识具体失败原因。
+`code` 和原始 `cause`。`CommandError` 继承它，并在首次经过 Command 边界时记录 `command`。
+父命令透传错误时保留这个名称。诊断的 `command` 表示错误来源，`target` 标识生成该条诊断的作用域。
 [基类定义](../../packages/plugin/src/errors.ts) · [Command 错误类型](../src/command/result.ts)
 
 | 错误类型 | 使用场景 | Command 行为 |
 |---|---|---|
 | `DoctorError` | 当前操作失败，可附带诊断码和底层原因 | 未在当前步骤处理的错误会形成该次调用的 `failed`。聚合命令可以继续执行独立步骤。 |
+| `CommandError` | Command 层的一般失败 | 记录来源命令。以下两个子类分别表达输入错误和整轮终止。 |
 | `CommandInputError` | 参数或输入组合无效 | 诊断码为 `invalid_argument`。作为根命令失败交付时，CLI 退出码为 `2`。 |
 | `CommandAbortError` | 当前目标已确定无法继续执行整轮命令 | 子命令逐层向上抛出，最外层 `Command.run` 收敛为 `failed`，停止后续步骤。CLI 输出一次错误提示，退出码为 `1`。 |
 
