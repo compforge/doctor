@@ -1,5 +1,5 @@
 import type { PluginDefinition } from "@compforge/doctor-plugin";
-import { CommandInputError, CommandStatus, type CommandInput, type CommandResult, type Command } from "../command";
+import { CommandInputError, CommandStatus, recordCommandError, type CommandInput, type CommandResult, type Command } from "../command";
 import { reportError } from "./error-report";
 import { finalizeCommand } from "./finalize";
 import { prepareCommand, type CommandOptions } from "./prepare";
@@ -56,7 +56,7 @@ async function executeCommand<Input extends CommandInput, Output>(
       let result: CommandResult<Output>;
       try { result = await spec.run(context, input); }
       catch (error) {
-        reportError(error, { context: spec.name, summary: "fatal" });
+        reportError(error, { context: recordCommandError(error, spec.name), summary: "fatal" });
         result = { status: CommandStatus.Failed, artifacts: [], error };
       }
       finalizing = true;
@@ -66,7 +66,7 @@ async function executeCommand<Input extends CommandInput, Output>(
       });
     } finally { process.removeListener("SIGINT", interrupt); }
   } catch (error) {
-    reportError(error, { context: spec.name, summary: "fatal" });
+    reportError(error, { context: recordCommandError(error, spec.name), summary: "fatal" });
     process.exitCode = !(error instanceof CommandInputError) && opts.format?.trim() === "manifest"
       ? await deliverPreparationFailure(spec.name, error instanceof Error ? error.message : String(error), opts.output)
       : error instanceof CommandInputError ? 2 : 1;
@@ -81,7 +81,7 @@ export async function runStandaloneCommand(
     const code = await action();
     if (typeof code === "number") process.exitCode = code;
   } catch (error) {
-    reportError(error, { context, summary: "fatal" });
+    reportError(error, { context: recordCommandError(error, context), summary: "fatal" });
     process.exitCode = error instanceof CommandInputError ? 2 : 1;
   }
 }

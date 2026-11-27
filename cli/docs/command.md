@@ -101,6 +101,28 @@ Inspect 和 Tenant 的 Input 构造函数按检查范围、租户及采集参数
 子命令。调用方仍显式纳入子产物，Artifacts 按产物 ID 去重，因此多个 Collect 可引用同一份环境/租户证据，
 最终报告只交付一份。Overview 无需识别第一次或后续 Collect。
 
+## DoctorError
+
+`DoctorError` 是 Core 和 Plugin 共用的错误基类，承载面向读者的 `message`、可选的稳定诊断码
+`code` 和原始 `cause`。`CommandError` 继承它，并在首次经过 Command 边界时记录 `command`。
+父命令透传错误时保留这个名称。诊断的 `command` 表示错误来源，`target` 标识生成该条诊断的作用域。
+[基类定义](../../packages/plugin/src/errors.ts) · [Command 错误类型](../src/command/result.ts)
+
+| 错误类型 | 使用场景 | Command 行为 |
+|---|---|---|
+| `DoctorError` | 当前操作失败，可附带诊断码和底层原因 | 未在当前步骤处理的错误会形成该次调用的 `failed`。聚合命令可以继续执行独立步骤。 |
+| `CommandError` | Command 层的一般失败 | 记录来源命令。以下两个子类分别表达输入错误和整轮终止。 |
+| `CommandInputError` | 参数或输入组合无效 | 诊断码为 `invalid_argument`。作为根命令失败交付时，CLI 退出码为 `2`。 |
+| `CommandAbortError` | 当前目标已确定无法继续执行整轮命令 | 子命令逐层向上抛出，最外层 `Command.run` 收敛为 `failed`，停止后续步骤。CLI 输出一次错误提示，退出码为 `1`。 |
+
+领域代码捕获并降级错误时，须透传收到的 `CommandAbortError`。例如，`collect` 确认交互选中的
+namespace 匹配到零个插件 Service 时，抛出诊断码为 `namespace_no_matching_services` 的
+`CommandAbortError`，提示指定业务 Service 所在的 namespace 后重试。
+
+最外层 Command 进入 Finalize，清理资源并交付已保留的产物；执行诊断写入 `diagnostics.json`，
+其中包含脱敏后的消息、诊断码及原因链。根命令的普通失败退出码为 `1`。用户取消以 `cancelled`
+交付，退出码为 `130`。 [执行诊断](../src/command/diagnostic.ts) · [退出码映射](../src/app/command.ts)
+
 ## Context 与调用归属
 
 `CommandContext` 属于整轮执行树，保存 Profile、当前 Plugin、按需准备并复用的环境信息、权限检查、
@@ -329,7 +351,7 @@ manifest 的 `--output` 必须是尚不存在的目录，未指定则保留唯�
 
 - `execution` 表示命令采集终态，partial 保持 partial；业务状态从领域证据读取。
 - `serialization` 表示本地文件写入；`render` 表示页面生成；`delivery` 表示交付。
-- `delivery.exitCode` 是最终 CLI 退出码：ok/partial 通常为 0，失败非零，取消为 130。
+- `delivery.exitCode` 是最终 CLI 退出码。ok/partial 通常为 0，失败和取消的映射见 [DoctorError](#doctorerror)。
 - `delivery.location.directory/manifest` 显式记录原交付现场的绝对路径，内部引用始终相对。
 - `source` 记录命令、已知 Profile/Plugin 与实际 Kubernetes 目标，不写入凭据或配置正文。
 

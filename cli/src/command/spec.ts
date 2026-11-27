@@ -1,8 +1,8 @@
 import { executionDiagnostic, diagnosticMessage, type ExecutionDiagnostic } from "./diagnostic";
 import { useLogger } from "../terminal/log";
 import type { CommandContext } from "./context";
-import { inCommandScope, withRunSignal } from "./execution-scope";
-import type { CommandResult } from "./result";
+import { currentCommandClients, inCommandScope, recordExecutionDiagnostics, withRunSignal } from "./execution-scope";
+import { CommandAbortError, recordCommandError, type CommandResult } from "./result";
 import { CommandStatus } from "./status";
 import { withInteractionOptions } from "../terminal/policy";
 
@@ -54,6 +54,8 @@ export function defineCommand<Input extends CommandInput, Output, Prepared = Inp
   return {
     ...metadata,
     run: (context, input) => withInteractionOptions({ yes: input.yes ?? context.options.yes }, async (): Promise<CommandResult<Output>> => {
+      const nested = currentCommandClients() === context.clients;
+      const invocationStartedAt = Date.now();
       const execute = async () => {
         const diagnostics: ExecutionDiagnostic[] = [];
         let phase = "prepare";
@@ -71,17 +73,23 @@ export function defineCommand<Input extends CommandInput, Output, Prepared = Inp
               phase = "run";
               startedAt = Date.now();
               const result = await withRunSignal(context.runSignal, () => spec.run(context, prepared));
+              if ("error" in result) recordCommandError(result.error, spec.name);
               completed = context.runSignal.aborted ? { ...result, status: CommandStatus.Cancelled } : result;
               context.artifacts.add(result.artifacts);
               if (result.status === CommandStatus.Cancelled) context.cancel();
               return completed;
-            }, context.clients, { diagnostics });
+            }, context.clients, { command: spec.name, diagnostics });
           } catch (error) {
-            const cancelled = completed ? completed.status === CommandStatus.Cancelled : phase === "run" && context.runSignal.aborted;
+            if (nested && error instanceof CommandAbortError) {
+              recordExecutionDiagnostics(diagnostics);
+              throw error;
+            }
+            const cancelled = !(error instanceof CommandAbortError)
+              && (completed ? completed.status === CommandStatus.Cancelled : phase === "run" && context.runSignal.aborted);
             if (!completed || !diagnostics.some(item => item.phase === "cleanup")) {
               diagnostics.push(executionDiagnostic(error, { phase: completed ? "cleanup" : phase, target: spec.name, startedAt, kind: cancelled ? "cancelled" : undefined }));
             }
-            if (!cancelled) context.options.onError?.(error, spec.name);
+            if (!cancelled) context.options.onError?.(error, recordCommandError(error, spec.name));
             return {
               ...completed,
               status: cancelled ? CommandStatus.Cancelled : CommandStatus.Failed,
@@ -105,7 +113,15 @@ export function defineCommand<Input extends CommandInput, Output, Prepared = Inp
         return cancelledBeforeLookup && result.status !== CommandStatus.Failed
           ? { ...result, status: CommandStatus.Cancelled } : result;
       } catch (error) {
-        context.options.onError?.(error, spec.name);
+        const command = recordCommandError(error, spec.name);
+        if (nested && error instanceof CommandAbortError) throw error;
+        context.options.onError?.(error, command);
+        if (error instanceof CommandAbortError) {
+          return {
+            status: CommandStatus.Failed, artifacts: [], error, reason: diagnosticMessage(error),
+            diagnostics: [executionDiagnostic(error, { phase: "validate", target: spec.name, startedAt: invocationStartedAt })],
+          };
+        }
         return {
           status: CommandStatus.Failed,
           artifacts: [], error, reason: error instanceof Error ? error.message : String(error),

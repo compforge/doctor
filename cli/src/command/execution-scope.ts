@@ -1,5 +1,6 @@
 import { CLEANUP_TIMEOUT_MS, disposeWithinBudget } from "./deadline";
 import { executionDiagnostic, type ExecutionDiagnostic } from "./diagnostic";
+import { CommandAbortError, recordCommandError } from "./result";
 import type { ClientManager } from "@compforge/harness-common";
 import { AsyncLocalStorage } from "node:async_hooks";
 
@@ -38,14 +39,23 @@ export function recordExecutionFailure(error: unknown, context: Parameters<typeo
   execution.getStore()?.diagnostics.push(executionDiagnostic(error, context));
 }
 
+export function recordExecutionDiagnostics(diagnostics: readonly ExecutionDiagnostic[]): void {
+  execution.getStore()?.diagnostics.push(...diagnostics);
+}
+
 export async function inCommandScope<T>(signal: AbortSignal, work: () => Promise<T>, clients?: Pick<ClientManager, "get" | "create">,
-  options: { diagnostics?: ExecutionDiagnostic[]; cleanupTimeoutMs?: number } = {}): Promise<T> {
+  options: { command?: string; diagnostics?: ExecutionDiagnostic[]; cleanupTimeoutMs?: number } = {}): Promise<T> {
   const scope: ExecutionScope = { signal, clients, diagnostics: options.diagnostics ?? [], disposers: new Set() };
   return execution.run(scope, async () => {
     let failed = false;
     let failure: unknown;
     try { return await work(); }
-    catch (error) { failed = true; failure = error; throw error; }
+    catch (error) {
+      if (options.command) recordCommandError(error, options.command);
+      failed = true;
+      failure = error;
+      throw error;
+    }
     finally {
       const errors: unknown[] = [];
       const deadline = Date.now() + (options.cleanupTimeoutMs ?? CLEANUP_TIMEOUT_MS);
@@ -54,11 +64,13 @@ export async function inCommandScope<T>(signal: AbortSignal, work: () => Promise
         const startedAt = Date.now();
         try { await disposeWithinBudget(dispose, deadline - Date.now()); }
         catch (error) {
+          if (options.command) recordCommandError(error, options.command);
           recordExecutionFailure(error, { phase: "cleanup", target: "invocation resources", startedAt });
           errors.push(error);
         }
       }
-      if (errors.length) throw new AggregateError(failed ? [failure, ...errors] : errors, "Command resource cleanup failed");
+      // Keep an explicit abort visible at the command boundary. Cleanup errors are recorded above.
+      if (errors.length && !(failure instanceof CommandAbortError)) throw new AggregateError(failed ? [failure, ...errors] : errors, "Command resource cleanup failed");
     }
   });
 }

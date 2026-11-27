@@ -23,10 +23,29 @@ export type CommandResult<Output> = CommandResultArtifacts & (
     }
 );
 
-export class CommandInputError extends DoctorError {
+/**
+ * @spec Record the first Command that observes this error and preserve that origin across parents.
+ * @link cli/docs/command.md#doctorerror
+ */
+export class CommandError extends DoctorError {
+  #command?: string;
+
+  get command(): string | undefined { return this.#command; }
+
+  recordCommand(command: string): string { return this.#command ??= command; }
+}
+
+/** @spec Abort the current command tree and retain the error as the root failure. */
+export class CommandAbortError extends CommandError {}
+
+export class CommandInputError extends CommandError {
   constructor(message?: string, options?: ErrorOptions) {
     super(message, { ...options, code: "invalid_argument" });
   }
+}
+
+export function recordCommandError(error: unknown, command: string): string {
+  return error instanceof CommandError ? error.recordCommand(command) : command;
 }
 
 /** A parent calls this only for work required by its own objective. Empty work is complete. */

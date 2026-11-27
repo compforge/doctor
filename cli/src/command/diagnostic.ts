@@ -1,5 +1,6 @@
 import { DoctorError } from "@compforge/doctor-plugin";
 import { ToolboxError } from "@compforge/harness-toolbox/errors";
+import { CommandError } from "./result";
 
 /** Credentials and signed URLs never belong in reusable diagnostic evidence. */
 export function diagnosticMessage(error: unknown, secrets: readonly string[] = []): string {
@@ -34,6 +35,7 @@ export function acquisitionFailure(error: unknown) {
 export interface ExecutionDiagnostic {
   phase: string;
   target: string;
+  command?: string;
   durationMs: number;
   kind: string;
   code?: string | number;
@@ -59,6 +61,8 @@ export function executionDiagnostic(error: unknown, context: { phase: string; ta
     if (cause instanceof AggregateError) pending.push(...cause.errors.slice(0, 6));
     else if (cause instanceof Error && cause.cause !== undefined) pending.push(cause.cause);
   }
-  return { phase: context.phase, target: message(context.target), durationMs: Math.max(0, Date.now() - context.startedAt),
+  return { phase: context.phase, target: message(context.target),
+    ...(error instanceof CommandError && error.command !== undefined && { command: message(error.command) }),
+    durationMs: Math.max(0, Date.now() - context.startedAt),
     kind: error instanceof ToolboxError ? error.kind : context.kind ?? "operation_failed", code: code(error), message: message(error), causes };
 }
